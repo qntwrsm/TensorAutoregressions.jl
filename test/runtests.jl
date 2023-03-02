@@ -1,6 +1,6 @@
-using TensorAutoregression
+using TensorAutoregressions
 using Test
 
-@testset "TensorAutoregression.jl" begin
+@testset "TensorAutoregressions.jl" begin
     # Write your tests here.
 end
