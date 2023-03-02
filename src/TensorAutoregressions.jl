@@ -9,7 +9,7 @@ TensorAutoregression.jl
 @date: 2023/02/27
 =#
 
-module TensorAutoregression
+module TensorAutoregressions
 
 using LinearAlgebra
 
@@ -167,12 +167,12 @@ resid(ε::AbstractTensorErrorDistribution) = ε.ε
 cov(ε::AbstractTensorErrorDistribution) = ε.Σ
 
 """
-    TensorAutoregressiveModel
+    TensorAutoregression
 
 Tensor autoregressive model with tensor error distribution ``ϵ`` and Kruskal tensor
 representation ``A``, potentially dynamic.
 """
-mutable struct TensorAutoregressiveModel{
+mutable struct TensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
     TA<:AbstractKruskal
@@ -180,7 +180,7 @@ mutable struct TensorAutoregressiveModel{
     y::Ty
     ε::Tε
     A::TA
-    function TensorAutoregressiveModel(y::AbstractArray, ε::AbstractTensorErrorDistribution, A::AbstractKruskal)
+    function TensorAutoregression(y::AbstractArray, ε::AbstractTensorErrorDistribution, A::AbstractKruskal)
         size(y) == size(resid(ε)) || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all(size(y)[1:end-1] .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
 
