@@ -1,5 +1,5 @@
 #=
-TensorAutoregression.jl
+TensorAutoregressions.jl
 
     Provides a collection of tools for working with tensor autoregressive 
     models, such as estimation, forecasting, and impulse response analysis. 
@@ -130,7 +130,7 @@ White noise model of tensor errors ``ε`` with covariance matrix ``Σ`` of
 mutable struct WhiteNoise{
     Tε<:AbstractArray,
     TΣ<:AbstractMatrix
-} <: AbstractErrorModel
+} <: AbstractTensorErrorDistribution
     ε::Tε
     Σ::TΣ
     function WhiteNoise(ε::AbstractArray, Σ::AbstractMatrix)
@@ -176,7 +176,7 @@ mutable struct TensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
     TA<:AbstractKruskal
-} <: TensorAutoregressiveModel
+}
     y::Ty
     ε::Tε
     A::TA
