@@ -51,3 +51,12 @@ function TensorAutoregression(
 
     return TensorAutoregression(y, ε, A)
 end
+
+"""
+    fit!(model) -> model
+
+Estimate the parameters of tensor autoregressive model described by `model`.
+"""
+function fit!(model::TensorAutoregression)
+
+end
