@@ -21,7 +21,8 @@ function TensorAutoregression(
     R::Integer, 
     dynamic::Bool=false, 
     dist::Symbol=:white_noise
-)   
+)
+
     # instantiate Kruskal autoregressive tensor
     if dynamic
         A = DynamicKruskal(
@@ -55,8 +56,13 @@ end
 """
     fit!(model) -> model
 
-Estimate the parameters of tensor autoregressive model described by `model`.
+Wrapper for fitting of tensor autoregressive model described by `model` to the
+data. 
+
+Estimation is done using the Expectation-Maximization algorithm for
+obtaining the maximum likelihood estimates of the dynamic model and the
+alternating least squares (ALS) algorithm for obtaining the least squares and
+maximum likelihood estimates of the static model, for respectively white noise
+and tensor normal errors.
 """
-function fit!(model::TensorAutoregression)
-    
-end
+fit!(model::TensorAutoregression) = coef(model) isa DynamicKruskal ? em!(model) : als!(model)
