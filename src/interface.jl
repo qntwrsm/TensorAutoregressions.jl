@@ -28,7 +28,7 @@ function TensorAutoregression(
     # instantiate Kruskal autoregressive tensor
     if dynamic
         A = DynamicKruskal(
-            similar(y, R), 
+            similar(y, R, lastindex(y, ndims(y))), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
             [similar(y, size(y, i), R) for i = 1:ndims(y)-1], 

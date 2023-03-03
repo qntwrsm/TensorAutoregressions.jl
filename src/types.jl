@@ -57,7 +57,7 @@ mutable struct DynamicKruskal{
     U::TU
     R::Int
     function DynamicKruskal(
-        λ::AbstractVector, 
+        λ::AbstractMatrix, 
         ϕ::AbstractMatrix, 
         Σ::AbstractMatrix, 
         U::AbstractVector, 
