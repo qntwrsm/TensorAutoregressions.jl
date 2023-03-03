@@ -68,3 +68,24 @@ maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
 fit!(model::TensorAutoregression) = coef(model) isa DynamicKruskal ? em!(model) : als!(model)
+
+"""
+    forecast(model, periods) -> forecasts
+
+Compute forecasts `periods` periods ahead using fitted tensor autoregressive
+model `model`.
+"""
+function forecast(model::TensorAutoregression, periods::Integer)
+    # TODO: implementation
+end
+
+"""
+    irf(model, periods, orth=false) -> irfs
+
+Compute impulse response functions `periods` periods ahead using fitted tensor
+autoregressive model `model`. If `orth` is true, the orthogonalized impulse
+response functions are computed.
+"""
+function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
+    # TODO: implementation
+end
