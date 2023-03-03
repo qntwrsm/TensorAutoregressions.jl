@@ -10,7 +10,7 @@ interface.jl
 =#
 
 """
-    TensorAutoregression(y, R, dynamic=false, dist=:white_noise)
+    TensorAutoregression(y, R, dynamic=false, dist=:white_noise) -> model
 
 Constructs a tensor autoregressive model for data `y` with autoregressive
 coefficient tensor of rank `R`, potentially dynamic, and tensor error
@@ -28,13 +28,13 @@ function TensorAutoregression(
             similar(y, R), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
-            [similar(y, size(y, i), R) for i = 1:ndims(y)], 
+            [similar(y, size(y, i), R) for i = 1:ndims(y)-1], 
             R
         )
     else
         A = StaticKruskal(
             similar(y, R), 
-            [similar(y, size(y, i), R) for i = 1:ndims(y)], 
+            [similar(y, size(y, i), R) for i = 1:ndims(y)-1], 
             R
         )
     end
@@ -58,5 +58,5 @@ end
 Estimate the parameters of tensor autoregressive model described by `model`.
 """
 function fit!(model::TensorAutoregression)
-
+    
 end
