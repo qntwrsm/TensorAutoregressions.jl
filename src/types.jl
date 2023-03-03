@@ -77,6 +77,8 @@ factors(A::AbstractKruskal) = A.U
 loadings(A::AbstractKruskal) = A.λ
 rank(A::AbstractKruskal) = A.R
 full(A::AbstractKruskal) = kruskal(loadings(A) .* factors(A))
+dynamics(A::DynamicKruskal) = A.ϕ
+cov(A::DynamicKruskal) = A.Σ
 
 # Tensor error distributions
 """
@@ -100,7 +102,7 @@ mutable struct WhiteNoise{
     Σ::TΣ
     function WhiteNoise(ε::AbstractArray, Σ::AbstractMatrix)
         issymmetric(Σ) || error("Σ must be symmetric.")
-        prod(size(ε)[1:end-1]) == size(Σ, 1) || throw(DimensionMismatch("number of elements in vec(ε) must equal rank of Σ."))
+        prod(size(ε)[1:end-1]) == size(Σ, 1) || throw(DimensionMismatch("number of elements in vec(εₜ) must equal rank of Σ."))
 
         return new{typeof(ε), Symmetric}(ε, Symmetric(Σ))
     end
@@ -119,8 +121,8 @@ mutable struct TensorNormal{
     ε::Tε
     Σ::TΣ
     function TensorNormal(ε::AbstractArray, Σ::AbstractVector)
-        length(Σ) == ndims(ε) - 1 || error("number of matrices in Σ must equal number of modes of ε.")
-        all(size.(Σ, 1) .== size(ε)[1:end-1]) || throw(DimensionMismatch("dimensions of matrices in Σ must equal dimensions of modes of ε."))
+        length(Σ) == ndims(ε) - 1 || error("number of matrices in Σ must equal number of modes of εₜ.")
+        all(size.(Σ, 1) .== size(ε)[1:end-1]) || throw(DimensionMismatch("dimensions of matrices in Σ must equal dimensions of modes of εₜ."))
         all(issymmetric, Σ) || error("all matrices in Σ must be symmetric.")
 
         return new{typeof(ε), Symmetric}(ε, Symmetric.(Σ))

@@ -13,7 +13,10 @@ module TensorAutoregressions
 
 using LinearAlgebra
 
-include("types.jl")
+export TensorAutoregression
+
 include("tensor_algebra.jl")
+include("types.jl")
+include("interface.jl")
 
 end
