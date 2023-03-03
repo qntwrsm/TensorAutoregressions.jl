@@ -76,7 +76,21 @@ Compute forecasts `periods` periods ahead using fitted tensor autoregressive
 model `model`.
 """
 function forecast(model::TensorAutoregression, periods::Integer)
-    # TODO: implementation
+    dims = size(data(model))
+    forecasts = similar(data(model), dims[1:end-1]..., periods)
+    for h = 1:periods
+        if h == 1
+            # last observation
+            X = selectdim(data(model), ndims(data(model)), last(dims))
+        else
+            # previous forecast
+            X = selectdim(forecasts, ndims(forecasts), h - 1)
+        end
+        # forecast
+        selectdim(forecasts, ndims(forecasts), h) .= coef(model) * X
+    end
+
+    return forecasts
 end
 
 """
