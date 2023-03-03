@@ -21,7 +21,9 @@ function TensorAutoregression(
     R::Integer, 
     dynamic::Bool=false, 
     dist::Symbol=:white_noise
-)
+)   
+    # check model specification
+    dynamic && dist == :white_noise || throw(ArgumentError("dynamic model with white noise error not supported."))
 
     # instantiate Kruskal autoregressive tensor
     if dynamic
