@@ -29,8 +29,6 @@ Tensorize matrix `An` by folding along mode `n` with tensor dimensions `dims`.
 function tensorize(An::AbstractMatrix, n::Integer, dims::Tuple)
     m = setdiff(1:length(dims), n)
     perm = invperm([n; m])
-    println("inv permutation: ", perm)
-    println("permutation: ", [n; m])
 
     return permutedims(reshape(An, dims[n], dims[m]...), perm)
 end
@@ -53,13 +51,6 @@ function tucker(G::AbstractArray, A::AbstractVector)
 end
 
 """
-    kruskal(A) -> T
-
-Kruskal operator of matrices `A`.
-"""
-kruskal(A::AbstractVector) = tucker(I(length(A), size(A[1], 2)), A)
-
-"""
     I(n, R) -> Id
 
 Identity tensor of `n` modes with mode size `R`.
@@ -72,3 +63,10 @@ function (I::UniformScaling)(n::Integer, R::Integer)
 
     return Id
 end
+
+"""
+    kruskal(A) -> T
+
+Kruskal operator of matrices `A`.
+"""
+kruskal(A::AbstractVector) = tucker(I(length(A), size(A[1], 2)), A)
