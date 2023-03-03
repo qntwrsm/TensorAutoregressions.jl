@@ -24,7 +24,13 @@ export
     factors, loadings, rank, # Kruskal coefficient tensor
 
     ## fit
-    fit!
+    fit!,
+
+    ## forecast
+    forecast,
+
+    ## impulse response functions
+    irf
 
 include("tensor_algebra.jl")
 include("types.jl")
