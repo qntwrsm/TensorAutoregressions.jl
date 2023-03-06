@@ -77,6 +77,14 @@ model `model`.
 """
 function forecast(model::TensorAutoregression, periods::Integer)
     dims = size(data(model))
+
+    # forecast dynamic coefficients
+    if coef(model) isa DynamicKruskal
+        # TODO: implementation
+        error("dynamic coefficient forecasts not implemented.")
+    end
+
+    # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:end-1]..., periods)
     for h = 1:periods
         if h == 1
