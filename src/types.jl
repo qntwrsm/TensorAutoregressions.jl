@@ -77,7 +77,7 @@ factors(A::AbstractKruskal) = A.U
 loadings(A::AbstractKruskal) = A.λ
 rank(A::AbstractKruskal) = A.R
 Base.size(A::AbstractKruskal) = tuple(size.(factors(A), 1)...)
-full(A::AbstractKruskal) = kruskal(loadings(A) .* factors(A))
+full(A::AbstractKruskal) = tucker(loadings(A) .* I(length(factors(A)), rank(A)), factors(A))
 dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
 
