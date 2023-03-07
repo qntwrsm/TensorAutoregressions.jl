@@ -160,8 +160,8 @@ end
 data(model::TensorAutoregression) = model.y
 coef(model::TensorAutoregression) = model.A
 dist(model::TensorAutoregression) = model.ε
-resid(model::TensorAutoregression) = resid(model.ε)
-cov(model::TensorAutoregression) = cov(model.ε)
-factors(model::TensorAutoregression) = factors(model.A)
-loadings(model::TensorAutoregression) = loadings(model.A)
-rank(model::TensorAutoregression) = rank(model.A)
+resid(model::TensorAutoregression) = resid(dist(model))
+cov(model::TensorAutoregression) = cov(dist(model))
+factors(model::TensorAutoregression) = factors(coef(model))
+loadings(model::TensorAutoregression) = loadings(coef(model))
+rank(model::TensorAutoregression) = rank(coef(model))
