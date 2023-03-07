@@ -102,12 +102,18 @@ function forecast(model::TensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods, orth=false) -> irfs
+    irf(model, periods, orth=false) -> Ψ
 
 Compute impulse response functions `periods` periods ahead using fitted tensor
 autoregressive model `model`. If `orth` is true, the orthogonalized impulse
 response functions are computed.
 """
 function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
-    # TODO: implementation
+    # moving average representation
+    Ψ = moving_average(coef(model), periods)
+
+    # orthogonalize
+    orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
+
+    return Ψ
 end
