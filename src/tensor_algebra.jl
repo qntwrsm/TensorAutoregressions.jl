@@ -55,7 +55,7 @@ end
 Identity tensor of `n` modes with mode size `R`.
 """
 function (I::UniformScaling)(n::Integer, R::Integer)
-    Id = zeros((n for _ = 1:R)...)
+    Id = zeros((R for _ = 1:n)...)
     for i = 1:R
         Id[repeat([i], n)...] = one(Float64)
     end

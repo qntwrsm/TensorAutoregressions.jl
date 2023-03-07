@@ -24,7 +24,7 @@ function moving_average(A::StaticKruskal, n::Integer)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
-    for h = 0:periods
+    for h = 0:n
         selectdim(Ψ, ndims(Ψ), h+1) .= tensorize(An^h, 1:length(dims)÷2, dims)
     end
 

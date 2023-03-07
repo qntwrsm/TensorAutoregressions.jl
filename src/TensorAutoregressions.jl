@@ -35,5 +35,6 @@ export
 include("tensor_algebra.jl")
 include("types.jl")
 include("interface.jl")
+include("utilities.jl")
 
 end
