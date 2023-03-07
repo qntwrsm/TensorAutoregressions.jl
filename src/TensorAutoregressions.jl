@@ -13,7 +13,24 @@ module TensorAutoregressions
 
 using LinearAlgebra
 
-export TensorAutoregression
+export
+    # main type + constructor
+    TensorAutoregression,
+
+    # interface methods
+    ## getters
+    data, coef, dist,   # general
+    resid, cov, # residuals
+    factors, loadings, rank, # Kruskal coefficient tensor
+
+    ## fit
+    fit!,
+
+    ## forecast
+    forecast,
+
+    ## impulse response functions
+    irf
 
 include("tensor_algebra.jl")
 include("types.jl")

@@ -57,7 +57,7 @@ mutable struct DynamicKruskal{
     U::TU
     R::Int
     function DynamicKruskal(
-        λ::AbstractVector, 
+        λ::AbstractMatrix, 
         ϕ::AbstractMatrix, 
         Σ::AbstractMatrix, 
         U::AbstractVector, 
@@ -155,3 +155,13 @@ mutable struct TensorAutoregression{
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
 end
+
+# methods
+data(model::TensorAutoregression) = model.y
+coef(model::TensorAutoregression) = model.A
+dist(model::TensorAutoregression) = model.ε
+resid(model::TensorAutoregression) = resid(dist(model))
+cov(model::TensorAutoregression) = cov(dist(model))
+factors(model::TensorAutoregression) = factors(coef(model))
+loadings(model::TensorAutoregression) = loadings(coef(model))
+rank(model::TensorAutoregression) = rank(coef(model))
