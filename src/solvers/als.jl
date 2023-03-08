@@ -48,15 +48,12 @@ function als!(
     init!(model)
 
     # instantiate model
-    model_prev = similar(model)
+    model_prev = copy(model)
 
     # alternating least squares
     iter = 0
     δ = Inf
     while δ > ϵ && iter < max_iter
-        # store model
-        copyto!(model_prev, model)
-
         # update Kruskal coefficient tensor
         update_coef!(model)
 
@@ -65,6 +62,9 @@ function als!(
 
         # compute maximum abs change in parameters
         δ = absdiff(model, model_prev)
+
+        # store model
+        copyto!(model_prev, model)
 
         # update iteration counter
         iter += 1
