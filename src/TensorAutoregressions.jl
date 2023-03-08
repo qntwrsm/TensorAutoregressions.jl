@@ -36,5 +36,7 @@ include("tensor_algebra.jl")
 include("types.jl")
 include("interface.jl")
 include("utilities.jl")
+include("solvers/als.jl")
+include("solvers/em.jl")
 
 end
