@@ -11,28 +11,27 @@ tensor_algebra.jl
 """
     matricize(A, n) -> An
 
-Matricize tensor `A` by unfolding along mode `n`.
+Matricize tensor `A` by unfolding along modes `n`.
 """
-function matricize(A::AbstractArray, n::Integer)
+function matricize(A::AbstractArray, n)
     dims = size(A)
     m = setdiff(1:ndims(A), n)
     perm = [n; m]
 
-    return reshape(permutedims(A, perm), dims[n], prod(dims[m])) 
+    return reshape(permutedims(A, perm), prod(dims[n]), prod(dims[m])) 
 end
 
 """
     tensorize(An, n, dims) -> A
 
-Tensorize matrix `An` by folding along mode `n` with tensor dimensions `dims`.
+Tensorize matrix `An` by folding along modes `n` with tensor dimensions `dims`.
 """
-function tensorize(An::AbstractMatrix, n::Integer, dims::Tuple)
+function tensorize(An::AbstractMatrix, n, dims)
     m = setdiff(1:length(dims), n)
     perm = invperm([n; m])
 
-    return permutedims(reshape(An, dims[n], dims[m]...), perm)
+    return permutedims(reshape(An, dims[n]..., dims[m]...), perm)
 end
-tensorize(An::AbstractMatrix, n::Integer, dims::AbstractVector) = tensorize(An, n, tuple(dims...))
 
 """
     tucker(G, A) -> T
@@ -56,17 +55,10 @@ end
 Identity tensor of `n` modes with mode size `R`.
 """
 function (I::UniformScaling)(n::Integer, R::Integer)
-    Id = zeros((n for _ = 1:R)...)
+    Id = zeros((R for _ = 1:n)...)
     for i = 1:R
-        Id[i, i] = one(Float64)
+        Id[repeat([i], n)...] = one(Float64)
     end
 
     return Id
 end
-
-"""
-    kruskal(A) -> T
-
-Kruskal operator of matrices `A`.
-"""
-kruskal(A::AbstractVector) = tucker(I(length(A), size(A[1], 2)), A)
