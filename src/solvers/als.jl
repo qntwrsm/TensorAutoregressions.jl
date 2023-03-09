@@ -15,7 +15,7 @@ als.jl
 Update Kruskal coefficient tensor and tensor error distribution covariance for
 the tensor autoregressive model.
 """
-function update_coef!(model::TensorAutoregression)
+function update!(model::TensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
