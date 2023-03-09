@@ -10,9 +10,10 @@ als.jl
 =#
 
 """
-    update_coef!(model)
+    update!(model)
 
-Update Kruskal coefficient tensor.
+Update Kruskal coefficient tensor and tensor error distribution covariance for
+the tensor autoregressive model.
 """
 function update_coef!(model::TensorAutoregression)
     dims = size(data(model))
@@ -31,17 +32,16 @@ function update_coef!(model::TensorAutoregression)
     # inverse scaling
     Ω = transpose.(Cinv) .* Cinv
 
-    for k = 1:n
-        # outer product of Kruskal factors
-        U = [factors(model)[i] * factors(model)[i]' for i = 1:n]
-
-        if dist(model) isa TensorNormal
-            # multiply with inverse Cholesky
-            for i = 1:n
-                lmul!(Cinv[i].L, U[i])
-            end
+    # outer product of Kruskal factors
+    U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
+    if dist(model) isa TensorNormal
+        # multiply with inverse Cholesky
+        for i = 1:n
+            lmul!(Cinv[i].L, U[i])
         end
+    end
 
+    for k = 1:n
         m = setdiff(1:n, k)
         # matricize dependent variable along k-th mode
         Z = tucker(selectdim(data(model), n+1, 1:last(dims)-1), Cinv, m)
@@ -58,24 +58,42 @@ function update_coef!(model::TensorAutoregression)
         # update factor k
         factors(model)[k] .= M * factors(model)[k+n]
         factors(model)[k] .*= inv(loadings(model)[1] * dot(factors(model)[k+n], G, factors(model)[k+n]))
+        # normalize
+        factors(model)[k] .*= inv(norm(factors(model)[k]))
         # update factor k+n
         factors(model)[k+n] .= inv(G) * M' * Ω[k] * factors(model)[k]
         factors(model)[k+n] .*= inv(loadings(model)[1] * dot(factors(model)[k], Ω[k], factors(model)[k]))
+        # normalize
+        factors(model)[k+n] .*= inv(norm(factors(model)[k+n]))
+
+        # update outer product of Kruskal factors
+        U[k] .= factors(model)[k] * factors(model)[k+n]'
+
+        if dist(model) isa TensorNormal
+            # update residuals
+            resid(model) .= Z .- loadings(model)[1] * tucker(X, U, n)
+
+            # update covariance
+            Ek = matricize(resid(model), k)
+            mul!(cov(model).data[k], Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+        
+            # update multiply with inverse Cholesky
+            lmul!(Cinv[k].L, U[k])
+        end
     end
 
     # update loading
     loadings(model)[1] = dot(Z, X) * inv(norm(X)^2)
 
-    return nothing
-end
+    if dist(model) isa WhiteNoise
+        # update residuals
+        resid(model) .= Z .- loadings(model)[1] * tucker(X, U, n)
 
-"""
-    update_cov!(model)
+        # update covariance
+        E = matricize(resid(model), 1:n)
+        mul!(cov(model).data, E, E')
+    end
 
-Update tensor error distribution covariance.
-"""
-function update_cov!(model::TensorAutoregression)
-    # TODO: implementation
     return nothing
 end
 
@@ -104,11 +122,8 @@ function als!(
     iter = 0
     δ = Inf
     while δ > ϵ && iter < max_iter
-        # update Kruskal coefficient tensor
-        update_coef!(model)
-
-        # update tensor error distribution covariance
-        update_cov!(model)
+        # update model
+        update!(model)
 
         # compute maximum abs change in parameters
         δ = absdiff(model, model_prev)
