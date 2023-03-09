@@ -41,13 +41,17 @@ function update!(model::TensorAutoregression)
         end
     end
 
+    # lag and lead variables
+    y_lead = selectdim(data(model), n+1, 2:last(dims))
+    y_lag = selectdim(data(model), n+1, 1:last(dims)-1)
+
     for k = 1:n
         m = setdiff(1:n, k)
         # matricize dependent variable along k-th mode
-        Z = tucker(selectdim(data(model), n+1, 1:last(dims)-1), Cinv, m)
+        Z = tucker(y_lead, Cinv[m], m)
         Zk = matricize(Z, k)
         # matricize regressor along k-th mode
-        X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), U, m)
+        X = tucker(y_lag, U[m], m)
         Xk = matricize(X, k)
 
         # Gram matrix
@@ -71,7 +75,7 @@ function update!(model::TensorAutoregression)
 
         if dist(model) isa TensorNormal
             # update residuals
-            resid(model) .= Z .- loadings(model)[1] * tucker(X, U, n)
+            resid(model) .= Z .- loadings(model)[1] * tucker(X, U[k], k)
 
             # update covariance
             Ek = matricize(resid(model), k)
@@ -82,13 +86,17 @@ function update!(model::TensorAutoregression)
         end
     end
 
+    # dependent variable and regressor tensors
+    Z = tucker(y_lead, Cinv, 1:n)
+    X = tucker(y_lag, U, 1:n)
+
     # update loading
     loadings(model)[1] = dot(Z, X) * inv(norm(X)^2)
 
-    if dist(model) isa WhiteNoise
-        # update residuals
-        resid(model) .= Z .- loadings(model)[1] * tucker(X, U, n)
+    # update residuals
+    resid(model) .= Z .- loadings(model)[1] .* X
 
+    if dist(model) isa WhiteNoise
         # update covariance
         E = matricize(resid(model), 1:n)
         mul!(cov(model).data, E, E')

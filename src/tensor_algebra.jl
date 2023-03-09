@@ -40,10 +40,10 @@ Tucker operator along modes `n` of tensor `G` with matrices `A`.
 """
 function tucker(G::AbstractArray, A::AbstractVector, n)
     dims = collect(size(G))
-    for i ∈ n
-        Gi = matricize(G, i)
-        dims[i] = size(A[i], 1)
-        G = tensorize(A[i] * Gi, i, dims)
+    for (i, k) ∈ enumerate(n)
+        Gk = matricize(G, k)
+        dims[k] = size(A[i], 1)
+        G = tensorize(A[i] * Gk, k, dims)
     end
 
     return G
