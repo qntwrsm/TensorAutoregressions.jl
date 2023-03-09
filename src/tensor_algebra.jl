@@ -34,20 +34,21 @@ function tensorize(An::AbstractMatrix, n, dims)
 end
 
 """
-    tucker(G, A) -> T
+    tucker(G, A, n) -> T
 
-Tucker operator of tensor `G` with matrices `A`.
+Tucker operator along modes `n` of tensor `G` with matrices `A`.
 """
-function tucker(G::AbstractArray, A::AbstractVector)
+function tucker(G::AbstractArray, A::AbstractVector, n)
     dims = collect(size(G))
-    for (i, Ai) ∈ enumerate(A)
-        Gi = matricize(G, i)
-        dims[i] = size(Ai, 1)
-        G = tensorize(Ai * Gi, i, dims)
+    for (i, k) ∈ enumerate(n)
+        Gk = matricize(G, k)
+        dims[k] = size(A[i], 1)
+        G = tensorize(A[i] * Gk, k, dims)
     end
 
     return G
 end
+tucker(G::AbstractArray, A::AbstractVector) = tucker(G, A, 1:length(A))
 
 """
     I(n, R) -> Id
