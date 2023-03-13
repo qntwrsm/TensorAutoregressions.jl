@@ -10,6 +10,20 @@ als.jl
 =#
 
 """
+    update_factor!(u, w, P, scale)
+
+Update and normalize factor `u` using regression based on projection matrix P.
+"""
+function update_factor!(u::AbstractVector, w::AbstractVector, P::AbstractMatrix, scale::Real)
+    # update factor
+    mul!(u, P, w, scale, zero(eltype(u)))
+    # normalize
+    u .*= inv(norm(u)) 
+
+    return nothing
+end
+
+"""
     update!(model)
 
 Update Kruskal coefficient tensor and tensor error distribution covariance for
@@ -60,15 +74,19 @@ function update!(model::TensorAutoregression)
         M = Zk * Xk'
 
         # update factor k
-        factors(model)[k] .= M * factors(model)[k+n]
-        factors(model)[k] .*= inv(loadings(model)[1] * dot(factors(model)[k+n], G, factors(model)[k+n]))
-        # normalize
-        factors(model)[k] .*= inv(norm(factors(model)[k]))
+        update_factor!(
+            factors(model)[k], 
+            factors(model)[k+n], 
+            M, 
+            inv(loadings(model)[1] * dot(factors(model)[k+n], G, factors(model)[k+n]))
+        )
         # update factor k+n
-        factors(model)[k+n] .= inv(G) * M' * Ω[k] * factors(model)[k]
-        factors(model)[k+n] .*= inv(loadings(model)[1] * dot(factors(model)[k], Ω[k], factors(model)[k]))
-        # normalize
-        factors(model)[k+n] .*= inv(norm(factors(model)[k+n]))
+        update_factor!(
+            factors(model)[k+n], 
+            factors(model)[k], 
+            inv(G) * M' * Ω[k], 
+            inv(loadings(model)[1] * dot(factors(model)[k], Ω[k], factors(model)[k]))
+        )
 
         # update outer product of Kruskal factors
         U[k] .= factors(model)[k] * factors(model)[k+n]'
