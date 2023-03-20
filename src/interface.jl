@@ -58,9 +58,9 @@ end
 """
     fit!(model, ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
-Wrapper for fitting of tensor autoregressive model described by `model` to the
-data with tolerance `ϵ` and maximum number of iterations `max_iter`. If
-`verbose` is true a summary of the model fitting is printed.
+Fit the tensor autoregressive model described by `model` to the data with
+tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
+a summary of the model fitting is printed.
 
 Estimation is done using the Expectation-Maximization algorithm for
 obtaining the maximum likelihood estimates of the dynamic model and the
@@ -68,9 +68,43 @@ alternating least squares (ALS) algorithm for obtaining the least squares and
 maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
-function fit!(model::TensorAutoregression, ϵ::AbstractFloat=1e-4, max_iter::Integer=1e3, verbose::Bool=false)
+function fit!(
+    model::TensorAutoregression, 
+    ϵ::AbstractFloat=1e-4, 
+    max_iter::Integer=1e3, 
+    verbose::Bool=false
+)
     rank(model) != 1 || error("general rank R model fitting not implemented.")
-    return coef(model) isa DynamicKruskal ? em!(model, ϵ, max_iter, verbose) : als!(model, ϵ, max_iter, verbose)
+    
+    # initialization of model parameters
+    init!(model)
+
+    # instantiate model
+    model_prev = copy(model)
+
+    # alternating least squares
+    iter = 0
+    δ = Inf
+    while δ > ϵ && iter < max_iter
+        # update model
+        update!(model)
+
+        # compute maximum abs change in parameters
+        δ = absdiff(model, model_prev)
+
+        # store model
+        copyto!(model_prev, model)
+
+        # update iteration counter
+        iter += 1
+    end
+
+    # optimization summary
+    if verbose
+        println("optimization summary not implemented.")
+    end
+
+    return model
 end
 
 """
