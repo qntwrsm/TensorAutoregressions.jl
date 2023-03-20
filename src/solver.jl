@@ -13,7 +13,8 @@ solver.jl
 """
     update_factor!(u, w, P, scale)
 
-Update and normalize factor `u` using regression based on projection matrix P.
+Update and normalize factor `u` using regression based on projection matrix `P`
+and companion factor `w`.
 """
 function update_factor!(u::AbstractVector, w::AbstractVector, P::AbstractMatrix, scale::Real)
     # update factor
@@ -25,40 +26,86 @@ function update_factor!(u::AbstractVector, w::AbstractVector, P::AbstractMatrix,
 end
 
 """
-    update!(model)
+    update!(A, ε, y)
 
-Update Kruskal coefficient tensor and tensor error distribution covariance for
-the tensor autoregressive model.
+Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
+tensor autoregressive model based on data `y`.
 """
-function update!(model::TensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
+    dims = size(y)
+    n = ndims(y) - 1
 
-    # scaling
-    if dist(model) isa WhiteNoise
-        # identity matrices
-        Cinv = [I for _ = 1:n]
-    elseif dist(model) isa TensorNormal
-        # Cholesky decompositions of Σᵢ
-        C = cholesky.(Hermitian.(cov(model)))
-        # inverse of Cholesky decompositions
-        Cinv = [inv(C[i].L) for i = 1:n]
+    # outer product of Kruskal factors
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+
+    # lag and lead variables
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+
+    # loop through modes
+    for k = 1:n
+        m = setdiff(1:n, k)
+        # matricize dependent variable along k-th mode
+        Yk = matricize(y_lead, k)
+        # matricize regressor along k-th mode
+        X = tucker(y_lag, U[m], m)
+        Xk = matricize(X, k)
+
+        # Gram matrix
+        G = Xk * Xk'
+        # moment matrix
+        M = Yk * Xk'
+
+        # update factor k
+        update_factor!(
+            factors(A)[k], 
+            factors(A)[k+n], 
+            M, 
+            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+        )
+        # update factor k+n
+        update_factor!(factors(A)[k+n], factors(A)[k], inv(G) * M', inv(loadings(A)[1]))
+
+        # update outer product of Kruskal factors
+        U[k] .= factors(A)[k] * factors(A)[k+n]'
     end
-    # inverse scaling
+
+    # regressor tensor
+    X = tucker(y_lag, U, 1:n)
+
+    # update loading
+    loadings(A)[1] = dot(y_lead, X) * inv(norm(X)^2)
+
+    # update residuals
+    resid(ε) .= y_lead .- loadings(A)[1] .* X
+
+    # update covariance
+    E = matricize(resid(ε), 1:n)
+    mul!(cov(ε).data, E, E')
+
+    return nothing
+end
+
+function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
+    # precision matrices Ωᵢ
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
-    if dist(model) isa TensorNormal
-        # multiply with inverse Cholesky
-        for i = 1:n
-            lmul!(Cinv[i].L, U[i])
-        end
-    end
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+
+    # scaling
+    S = [Cinv[i].L * U[i] for i = 1:n]
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n+1, 2:last(dims))
-    y_lag = selectdim(data(model), n+1, 1:last(dims)-1)
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
     for k = 1:n
         m = setdiff(1:n, k)
@@ -66,7 +113,7 @@ function update!(model::TensorAutoregression)
         Z = tucker(y_lead, Cinv[m], m)
         Zk = matricize(Z, k)
         # matricize regressor along k-th mode
-        X = tucker(y_lag, U[m], m)
+        X = tucker(y_lag, S[m], m)
         Xk = matricize(X, k)
 
         # Gram matrix
@@ -76,50 +123,42 @@ function update!(model::TensorAutoregression)
 
         # update factor k
         update_factor!(
-            factors(model)[k], 
-            factors(model)[k+n], 
+            factors(A)[k], 
+            factors(A)[k+n], 
             M, 
-            inv(loadings(model)[1] * dot(factors(model)[k+n], G, factors(model)[k+n]))
+            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
         )
         # update factor k+n
         update_factor!(
-            factors(model)[k+n], 
-            factors(model)[k], 
+            factors(A)[k+n], 
+            factors(A)[k], 
             inv(G) * M' * Ω[k], 
-            inv(loadings(model)[1] * dot(factors(model)[k], Ω[k], factors(model)[k]))
+            inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
         )
 
         # update outer product of Kruskal factors
-        U[k] .= factors(model)[k] * factors(model)[k+n]'
+        U[k] .= factors(A)[k] * factors(A)[k+n]'
 
-        if dist(model) isa TensorNormal
-            # update residuals
-            resid(model) .= Z .- loadings(model)[1] * tucker(X, U[k], k)
+        # update residuals
+        resid(ε) .= Z .- loadings(A)[1] * tucker(X, U[k], k)
 
-            # update covariance
-            Ek = matricize(resid(model), k)
-            mul!(cov(model).data[k], Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        
-            # update multiply with inverse Cholesky
-            lmul!(Cinv[k].L, U[k])
-        end
+        # update covariance
+        Ek = matricize(resid(ε), k)
+        mul!(cov(ε).data[k], Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+    
+        # update scaling
+        S[k] .= Cinv[k].L * U[k]
     end
 
     # dependent variable and regressor tensors
     Z = tucker(y_lead, Cinv, 1:n)
-    X = tucker(y_lag, U, 1:n)
+    X = tucker(y_lag, S, 1:n)
 
     # update loading
-    loadings(model)[1] = dot(Z, X) * inv(norm(X)^2)
+    loadings(A)[1] = dot(Z, X) * inv(norm(X)^2)
 
     # update residuals
-    resid(model) .= Z .- loadings(model)[1] .* X
-
-    if dist(model) isa WhiteNoise
-        # update covariance
-        E = matricize(resid(model), 1:n)
-        mul!(cov(model).data, E, E')
-    end
+    resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U, 1:n)
 
     return nothing
 end

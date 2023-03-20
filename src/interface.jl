@@ -87,7 +87,7 @@ function fit!(
     δ = Inf
     while δ > ϵ && iter < max_iter
         # update model
-        update!(model)
+        update!(coef(model), dist(model), data(model))
 
         # compute maximum abs change in parameters
         δ = absdiff(model, model_prev)
