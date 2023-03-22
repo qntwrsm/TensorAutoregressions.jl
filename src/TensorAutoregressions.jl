@@ -11,7 +11,7 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra
+using LinearAlgebra, StateSpace
 
 export
     # main type + constructor

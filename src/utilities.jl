@@ -2,8 +2,8 @@
 utilities.jl
 
     Provides a collection of utility tools for working with tensor 
-    autoregressive models, such as moving average representation and 
-    orthogonalize responses. 
+    autoregressive models, such as moving average representation, orthogonalize 
+    responses, and Kalman filter and smoother routines for the dynamic model. 
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 

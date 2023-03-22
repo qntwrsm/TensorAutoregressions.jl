@@ -71,7 +71,7 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
 
     # scaling
-    S = [Cinv[i].L * U[i] for i = 1:n]
+    S = [Cinv[i] * U[i] for i = 1:n]
 
     # lag and lead variables
     y_lead = selectdim(y, n+1, 2:last(dims))
@@ -120,11 +120,12 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         # update covariance
         μk = U[k] * Xk
         Ek = Zk - λ̂_ext' .* μk
-        mul!(cov(ε).data[k], Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        cov(ε).data[k] += inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk' 
+        mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+        cov(ε)[k].data += inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk' 
 
         # update scaling
-        S[k] = Cinv[k].L * U[k]
+        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k].data)).L)
+        S[k] = Cinv[k] * U[k]
     end
 
     # update residuals
@@ -141,7 +142,7 @@ part of the expectation step (E-step) of the EM algorithm for fitting a dynamic
 tensor autoregressive model to the data `y` by means of the collapsed Kalman
 filter and smoother routines.
 """
-function estep(A::DynamicKruskal, y::AbstractArray, ε::TensorNormal)
+function estep!(A::DynamicKruskal, y::AbstractArray, ε::TensorNormal)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -154,21 +155,37 @@ function estep(A::DynamicKruskal, y::AbstractArray, ε::TensorNormal)
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
 
     # scaling
-    S = [Cinv[i].L * U[i] for i = 1:n]
-
-    # lag and lead variables
-    y_lead = selectdim(y, n+1, 2:last(dims))
-    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+    S = [Cinv[i] * U[i] for i = 1:n]
     
     # collapsing
-    X = tucker(y_lag, S, 1:n)
-    Z = [[inv(norm(Xt))] for Xt in eachslice(X, dims=n+1)]
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = [inv(norm(Xt)) for Xt in eachslice(X, dims=n+1)]
+    trans = tucker(X, Cinv', 1:n)
+    y_star = [inv(Z[t]) * dot(vec(selectdim(trans, n+1, t)), vec(selectdim(y, n+1, t+1))) for t = 1:last(dims)-1]
+
+    # system
+    sys = LinearTimeVariant(
+        y_star,
+        Z,
+        [dynamics(A) for _ = 1:last(dims)-1],
+        zero(y_star),
+        zero(y_star),
+        [Matrix{eltype(y_star)}(I, rank(A), rank(A)) for _ = 1:last(dims)-1],
+        [cov(A) for _ = 1:last(dims)-1],
+        zeros(eltype(y_star), rank(A)),
+        Matrix{eltype(y_star)}(I, rank(A), rank(A))
+    )
+
+    # filter
+    filter = MultivariateFilter(rank(A), rank(A), last(dims)-1, eltype(y_star))
+    kalman_filter!(filter, sys)
 
     # smoother
-    (λ̂, σ̂, γ̂) = smoother(y_lead, Z, )
-    loadings(A) .= λ̂
+    smoother = Smoother(rank(A), 1, last(dims)-1, eltype(y_star))
+    kalman_smoother!(smoother, filter, sys)
+    loadings(A) .= vec(smoother.α)
 
-    return (σ̂, γ̂)
+    return (vec(smoother.V[:,:,1,:]), vec(smoother.V[:,:,2,:]))
 end
 
 """
@@ -247,7 +264,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
 
     # scaling
-    S = [Cinv[i].L * U[i] for i = 1:n]
+    S = [Cinv[i] * U[i] for i = 1:n]
 
     # lag and lead variables
     y_lead = selectdim(y, n+1, 2:last(dims))
@@ -287,10 +304,11 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 
         # update covariance
         Ek = Zk - loadings(A)[1] .* Uk * Xk
-        mul!(cov(ε).data[k], Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+        mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
     
         # update scaling
-        S[k] = Cinv[k].L * U[k]
+        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+        S[k] = Cinv[k] * U[k]
     end
 
     # dependent variable and regressor tensors
