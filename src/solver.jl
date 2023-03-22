@@ -134,6 +134,44 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
 end
 
 """
+    estep!(A, y, ε) -> (σ̂, γ̂)
+
+Compute smoothed loadings, loadings variance `σ̂` and autocovariance `γ̂` as
+part of the expectation step (E-step) of the EM algorithm for fitting a dynamic
+tensor autoregressive model to the data `y` by means of the collapsed Kalman
+filter and smoother routines.
+"""
+function estep(A::DynamicKruskal, y::AbstractArray, ε::TensorNormal)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
+
+    # outer product of Kruskal factors
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+
+    # scaling
+    S = [Cinv[i].L * U[i] for i = 1:n]
+
+    # lag and lead variables
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+    
+    # collapsing
+    X = tucker(y_lag, S, 1:n)
+    Z = [[inv(norm(Xt))] for Xt in eachslice(X, dims=n+1)]
+
+    # smoother
+    (λ̂, σ̂, γ̂) = smoother(y_lead, Z, )
+    loadings(A) .= λ̂
+
+    return (σ̂, γ̂)
+end
+
+"""
     update!(A, ε, y)
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
@@ -270,7 +308,7 @@ end
 
 function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     # E-step
-    (σ̂, γ̂) = estep(y, A, ε)
+    (σ̂, γ̂) = estep!(A, y, ε)
 
     # M-step
     update_dynamic!(A, σ̂, γ̂)
