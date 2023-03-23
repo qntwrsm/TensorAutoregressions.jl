@@ -135,60 +135,6 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
 end
 
 """
-    estep!(A, y, ε) -> (σ̂, γ̂)
-
-Compute smoothed loadings, loadings variance `σ̂` and autocovariance `γ̂` as
-part of the expectation step (E-step) of the EM algorithm for fitting a dynamic
-tensor autoregressive model to the data `y` by means of the collapsed Kalman
-filter and smoother routines.
-"""
-function estep!(A::DynamicKruskal, y::AbstractArray, ε::TensorNormal)
-    dims = size(y)
-    n = ndims(y) - 1
-
-    # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
-    # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
-
-    # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
-
-    # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
-    
-    # collapsing
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
-    Z = [inv(norm(Xt)) for Xt in eachslice(X, dims=n+1)]
-    trans = tucker(X, Cinv', 1:n)
-    y_star = [inv(Z[t]) * dot(vec(selectdim(trans, n+1, t)), vec(selectdim(y, n+1, t+1))) for t = 1:last(dims)-1]
-
-    # system
-    sys = LinearTimeVariant(
-        y_star,
-        Z,
-        [dynamics(A) for _ = 1:last(dims)-1],
-        zero(y_star),
-        zero(y_star),
-        [Matrix{eltype(y_star)}(I, rank(A), rank(A)) for _ = 1:last(dims)-1],
-        [cov(A) for _ = 1:last(dims)-1],
-        zeros(eltype(y_star), rank(A)),
-        Matrix{eltype(y_star)}(I, rank(A), rank(A))
-    )
-
-    # filter
-    filter = MultivariateFilter(rank(A), rank(A), last(dims)-1, eltype(y_star))
-    kalman_filter!(filter, sys)
-
-    # smoother
-    smoother = Smoother(rank(A), 1, last(dims)-1, eltype(y_star))
-    kalman_smoother!(smoother, filter, sys)
-    loadings(A) .= vec(smoother.α)
-
-    return (vec(smoother.V[:,:,1,:]), vec(smoother.V[:,:,2,:]))
-end
-
-"""
     update!(A, ε, y)
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
@@ -325,8 +271,24 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 end
 
 function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
+    dims = size(y)
+
     # E-step
-    (σ̂, γ̂) = estep!(A, y, ε)
+    # system
+    sys = state_space(y, A, ε)
+
+    # filter
+    filter = MultivariateFilter(rank(A), rank(A), last(dims)-1, eltype(y_star))
+    kalman_filter!(filter, sys)
+
+    # smoother
+    smoother = Smoother(rank(A), 1, last(dims)-1, eltype(y_star))
+    kalman_smoother_cov!(smoother, filter, sys)
+
+    # extract
+    loadings(A) .= vec(smoother.α)
+    σ̂ = vec(smoother.V[:,:,1,:])
+    γ̂ = vec(smoother.V[:,:,2,:])
 
     # M-step
     update_dynamic!(A, σ̂, γ̂)

@@ -3,7 +3,7 @@ utilities.jl
 
     Provides a collection of utility tools for working with tensor 
     autoregressive models, such as moving average representation, orthogonalize 
-    responses, and Kalman filter and smoother routines for the dynamic model. 
+    responses, and state space form for the dynamic model. 
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -65,4 +65,47 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
         selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tucker(ψ, C)
     end
     return Ψ_orth
+end
+
+"""
+    state_space(y, A, ε) -> sys
+
+State space form of the tensor autoregressive model with dynamic Kruskal
+coefficient tensor `A` and tensor error distribution `ε`.
+"""
+function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
+
+    # outer product of Kruskal factors
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+
+    # scaling
+    S = [Cinv[i] * U[i] for i = 1:n]
+    
+    # collapsing
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = [inv(norm(Xt)) for Xt in eachslice(X, dims=n+1)]
+    A_star = tucker(X, Cinv', 1:n)
+    y_star = [inv(Z[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1))) for t = 1:last(dims)-1]
+
+    # system
+    sys = LinearTimeVariant(
+        y_star,
+        Z,
+        [dynamics(A) for _ = 1:last(dims)-1],
+        zero(y_star),
+        zero(y_star),
+        [Matrix{eltype(y_star)}(I, rank(A), rank(A)) for _ = 1:last(dims)-1],
+        [cov(A) for _ = 1:last(dims)-1],
+        zeros(eltype(y_star), rank(A)),
+        Matrix{eltype(y_star)}(I, rank(A), rank(A))
+    )
+
+    return sys
 end
