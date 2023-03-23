@@ -274,21 +274,13 @@ function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     dims = size(y)
 
     # E-step
-    # system
-    sys = state_space(y, A, ε)
-
-    # filter
-    filter = MultivariateFilter(rank(A), rank(A), last(dims)-1, eltype(y_star))
-    kalman_filter!(filter, sys)
-
+    # collapsed state space system
+    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # smoother
-    smoother = Smoother(rank(A), 1, last(dims)-1, eltype(y_star))
-    kalman_smoother_cov!(smoother, filter, sys)
-
-    # extract
-    loadings(A) .= vec(smoother.α)
-    σ̂ = vec(smoother.V[:,:,1,:])
-    γ̂ = vec(smoother.V[:,:,2,:])
+    (α̂, V, Γ) = smoother(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    loadings(A) .= vcat(α̂...)
+    σ̂ = vcat(V...)
+    γ̂ = vcat(Γ...)
 
     # M-step
     update_dynamic!(A, σ̂, γ̂)
