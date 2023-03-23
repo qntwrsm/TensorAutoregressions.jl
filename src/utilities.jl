@@ -183,8 +183,8 @@ function smoother(
         # smoothing
         α̂[t] = a[t] + P[t] * r
         V[t] = P[t] - P[t] * N * P[t]
-        t > 1 && Γ[t-1] = I - P[t] * N
-        t < length(y) && Γ[t] *= L * P[t]
+        t > 1 && (Γ[t-1] = I - P[t] * N)
+        t < length(y) && (Γ[t] *= L * P[t])
     end
 
     return (α̂, V, Γ)
