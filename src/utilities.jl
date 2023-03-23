@@ -173,7 +173,7 @@ function smoother(
     L = similar(T)
 
     # smoother
-    for y ∈ reverse(eachindex(y))
+    for t ∈ reverse(eachindex(y))
         L .= T - K[t] * Z[t]
 
         # backward recursion
