@@ -23,7 +23,7 @@ function TensorAutoregression(
     dist::Symbol=:white_noise
 )   
     # check model specification
-    dynamic && dist == :white_noise || throw(ArgumentError("dynamic model with white noise error not supported."))
+    dynamic && dist == :white_noise && throw(ArgumentError("dynamic model with white noise error not supported."))
 
     # instantiate Kruskal autoregressive tensor
     if dynamic
@@ -56,10 +56,11 @@ function TensorAutoregression(
 end
 
 """
-    fit!(model) -> model
+    fit!(model, ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
-Wrapper for fitting of tensor autoregressive model described by `model` to the
-data. 
+Fit the tensor autoregressive model described by `model` to the data with
+tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
+a summary of the model fitting is printed.
 
 Estimation is done using the Expectation-Maximization algorithm for
 obtaining the maximum likelihood estimates of the dynamic model and the
@@ -67,7 +68,44 @@ alternating least squares (ALS) algorithm for obtaining the least squares and
 maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
-fit!(model::TensorAutoregression) = coef(model) isa DynamicKruskal ? em!(model) : als!(model)
+function fit!(
+    model::TensorAutoregression, 
+    ϵ::AbstractFloat=1e-4, 
+    max_iter::Integer=1e3, 
+    verbose::Bool=false
+)
+    rank(model) != 1 || error("general rank R model fitting not implemented.")
+    
+    # initialization of model parameters
+    init!(model)
+
+    # instantiate model
+    model_prev = copy(model)
+
+    # alternating least squares
+    iter = 0
+    δ = Inf
+    while δ > ϵ && iter < max_iter
+        # update model
+        update!(coef(model), dist(model), data(model))
+
+        # compute maximum abs change in parameters
+        δ = absdiff(model, model_prev)
+
+        # store model
+        copyto!(model_prev, model)
+
+        # update iteration counter
+        iter += 1
+    end
+
+    # optimization summary
+    if verbose
+        println("optimization summary not implemented.")
+    end
+
+    return model
+end
 
 """
     forecast(model, periods) -> forecasts
