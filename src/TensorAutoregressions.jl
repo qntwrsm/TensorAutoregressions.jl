@@ -11,7 +11,7 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra
+using LinearAlgebra, Statistics, TensorToolbox
 
 export
     # main type + constructor
@@ -36,6 +36,7 @@ include("tensor_algebra.jl")
 include("types.jl")
 include("interface.jl")
 include("utilities.jl")
-include("solver.jl")
+include("fit/utilities.jl")
+include("fit/solver.jl")
 
 end
