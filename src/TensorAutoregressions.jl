@@ -11,7 +11,7 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Statistics, TensorToolbox
+using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox
 
 export
     # main type + constructor
@@ -22,6 +22,9 @@ export
     data, coef, dist,   # general
     resid, cov, # residuals
     factors, loadings, rank, # Kruskal coefficient tensor
+
+    # simulate
+    simulate,
 
     ## fit
     fit!,
