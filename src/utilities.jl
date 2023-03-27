@@ -87,7 +87,7 @@ function particle_sampler(
     particles = similar(a, length(a), samples, periods)
     particles[:,:,1] = rand(rng, MvNormal(a, P), samples)
     for h = 2:periods, s = 1:samples
-        particles[:,s,h] = rand(rng, MvNormal(T * particles[:,s,h-1], Q), samples)
+        particles[:,s,h] = rand(rng, MvNormal(T * particles[:,s,h-1], Q))
     end
 
     return particles
