@@ -34,13 +34,13 @@ function TensorAutoregression(
             similar(y, R, last(dims)-1), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
-            [similar(y, dims[i], R) for i = 1:n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
             R
         )
     else
         A = StaticKruskal(
             similar(y, R), 
-            [similar(y, dims[i], R) for i = 1:n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
             R
         )
     end
@@ -72,6 +72,9 @@ return a new instance with the simulated data, using random number generator
 `rng`.
 """
 function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
     # Kruskal coefficient
     if isa(coef(model), StaticKruskal)
         A_sim = similar(coef(model))
@@ -84,7 +87,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     ε_sim = simulate(dist(model), rng)
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε_sim)))
+    C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
     
     # outer product of Kruskal factors
     U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
@@ -94,7 +97,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
         if t == 1
             # initial condition
-            yt .= tucker(randn(rng, dims[1:end-1]...), C, 1:n)
+            yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
         else
             # errors
             yt .= selectdim(resid(model), n+1, t-1)
@@ -103,13 +106,13 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
                 if isa(coef(model), StaticKruskal)
                     yt .+= loadings(model)[r] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
                 elseif isa(coef(model), DynamicKruskal)
-                    yt .+= loadings(model)[r,t] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
+                    yt .+= loadings(model)[r,t-1] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
                 end
             end
         end
     end
 
-    return TensorAutoregression(y_sim, A_sim, ε_sim)
+    return TensorAutoregression(y_sim, ε_sim, A_sim)
 end
 
 """

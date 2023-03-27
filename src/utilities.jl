@@ -228,7 +228,7 @@ function simulate(ε::TensorNormal, rng::AbstractRNG)
     n = ndims(resid(ε_sim)) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε_sim)))
+    C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
 
     # sample independent random normals and use tucker product with Cholesky 
     # decompositions
