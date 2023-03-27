@@ -4,7 +4,7 @@ utilities.jl
     Provides a collection of utility tools for working with tensor 
     autoregressive models, such as moving average representation, orthogonalize 
     responses, state space form for the dynamic model, as well as filter and 
-    smoother routines, and simulation. 
+    smoother routines, simulation, and particle sampler. 
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -66,6 +66,31 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
         selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tucker(ψ, C)
     end
     return Ψ_orth
+end
+
+"""
+    particle_sampler(a, P, T, Q, periods, samples, rng) -> particles
+
+Forward particle sampler of the filtered state `a` with corresponding variance
+`P` and state equation system matrices `T` and `Q` with the number of forward
+periods given by `periods`, using random number generator `rng`.
+"""
+function particle_sampler(
+    a::AbstractVector, 
+    P::AbstractMatrix, 
+    T::AbstractMatrix, 
+    Q::AbstractMatrix, 
+    periods::Integer,
+    samples::Integer,
+    rng::AbstractRNG
+)
+    particles = similar(a, length(a), samples, periods)
+    particles[:,:,1] = rand(rng, MvNormal(a, P), samples)
+    for h = 2:periods, s = 1:samples
+        particles[:,s,h] = rand(rng, MvNormal(T * particles[:,s,h-1], Q))
+    end
+
+    return particles
 end
 
 """
