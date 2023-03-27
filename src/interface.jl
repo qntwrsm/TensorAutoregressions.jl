@@ -10,7 +10,7 @@ interface.jl
 =#
 
 """
-    TensorAutoregression(y, R, dynamic=false, dist=:white_noise) -> model
+    TensorAutoregression(y, R; dynamic=false, dist=:white_noise) -> model
 
 Constructs a tensor autoregressive model for data `y` with autoregressive
 coefficient tensor of rank `R`, potentially dynamic, and tensor error
@@ -18,7 +18,7 @@ distribution `dist`.
 """
 function TensorAutoregression(
     y::AbstractArray, 
-    R::Integer, 
+    R::Integer; 
     dynamic::Bool=false, 
     dist::Symbol=:white_noise
 )   
