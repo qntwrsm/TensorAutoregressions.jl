@@ -64,6 +64,54 @@ function TensorAutoregression(
 end
 
 """
+    simulate(model, rng=Xoshiro()) -> model_sim
+
+Simulate data from the tensor autoregressive model described by `model` and
+return a new instance with the simulated data, using random number generator
+`rng`.
+"""
+function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
+    # Kruskal coefficient
+    if isa(coef(model), StaticKruskal)
+        A_sim = similar(coef(model))
+        copyto!(A_sim, coef(model))
+    else
+        A_sim = simulate(coef(model), rng)
+    end
+
+    # tensor error distribution
+    ε_sim = simulate(dist(model), rng)
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε_sim)))
+    
+    # outer product of Kruskal factors
+    U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
+
+    # simulate data
+    y_sim = similar(data(model))
+    for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
+        if t == 1
+            # initial condition
+            yt .= tucker(randn(rng, dims[1:end-1]...), C, 1:n)
+        else
+            # errors
+            yt .= selectdim(resid(model), n+1, t-1)
+            # autoregressive component
+            for r = 1:rank(model)
+                if isa(coef(model), StaticKruskal)
+                    yt .+= loadings(model)[r] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
+                elseif isa(coef(model), DynamicKruskal)
+                    yt .+= loadings(model)[r,t] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
+                end
+            end
+        end
+    end
+
+    return TensorAutoregression(y_sim, A_sim, ε_sim)
+end
+
+"""
     fit!(model, ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with

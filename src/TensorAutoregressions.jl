@@ -11,7 +11,7 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Statistics, TensorToolbox
+using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox
 
 export
     # main type + constructor

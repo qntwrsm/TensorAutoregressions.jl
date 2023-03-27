@@ -4,7 +4,7 @@ utilities.jl
     Provides a collection of utility tools for working with tensor 
     autoregressive models, such as moving average representation, orthogonalize 
     responses, state space form for the dynamic model, as well as filter and 
-    smoother routines. 
+    smoother routines, and simulation. 
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -188,4 +188,53 @@ function smoother(
     end
 
     return (α̂, V, Γ)
+end
+
+"""
+    simulate(A, rng) -> A_sim
+
+Simulate the dynamic loadings from the dynamic Kruskal coefficient tensor `A`
+using the random number generator `rng`.
+"""
+function simulate(A::DynamicKruskal, rng::AbstractRNG)
+    A_sim = similar(A)
+    copyto!(A_sim, A)
+
+    # simulate
+    for (t, λt) ∈ pairs(eachslice(loadings(A), dims=2))
+        if t == 1
+            # initial condition
+            λt .= rand(rng, MvNormal(cov(A)))
+        else
+            λt .= dynamics(A) * loadings(A)[:,t-1] + rand(rng, MvNormal(cov(A)))
+        end
+    end
+
+    return A_sim
+end
+
+"""
+    simulate(ε, rng) -> ε_sim
+
+Simulate from the tensor error distribution `ε` using the random number
+generator `rng`.
+"""
+simulate(ε::WhiteNoise, rng::AbstractRNG) = error("simulating data from white noise error not implemented.")
+function simulate(ε::TensorNormal, rng::AbstractRNG)
+    ε_sim = similar(ε)
+    copyto!(ε_sim, ε)
+
+    dims = size(resid(ε_sim))
+    n = ndims(resid(ε_sim)) - 1
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε_sim)))
+
+    # sample independent random normals and use tucker product with Cholesky 
+    # decompositions
+    for εt ∈ eachslice(resid(ε_sim), dims=n+1)
+        εt .= tucker(randn(rng, dims[1:end-1]...), C, 1:n)
+    end
+
+    return ε_sim
 end
