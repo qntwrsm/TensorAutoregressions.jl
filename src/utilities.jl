@@ -71,9 +71,9 @@ end
 """
     particle_sampler(a, P, T, Q, periods, samples, rng) -> particles
 
-Particle sampler for `periods` out-of-sample periods of the filtered state `a`
-with corresponding variance `P` and state equation system matrices `T` and `Q`
-using random number generator `rng`.
+Forward particle sampler of the filtered state `a` with corresponding variance
+`P` and state equation system matrices `T` and `Q` with the number of forward
+periods given by `periods`, using random number generator `rng`.
 """
 function particle_sampler(
     a::AbstractVector, 
