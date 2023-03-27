@@ -144,7 +144,7 @@ mutable struct TensorNormal{
         all(size.(Σ, 1) .== size(ε)[1:end-1]) || throw(DimensionMismatch("dimensions of matrices in Σ must equal dimensions of modes of εₜ."))
         all(issymmetric, Σ) || error("all matrices in Σ must be symmetric.")
 
-        return new{typeof(ε), Symmetric}(ε, Symmetric.(Σ))
+        return new{typeof(ε), typeof(Σ)}(ε, Symmetric.(Σ))
     end
 end
 

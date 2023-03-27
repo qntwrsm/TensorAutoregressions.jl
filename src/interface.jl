@@ -23,6 +23,7 @@ function TensorAutoregression(
     dist::Symbol=:white_noise
 )   
     dims = size(y)
+    n = ndims(y) - 1
 
     # check model specification
     dynamic && dist == :white_noise && throw(ArgumentError("dynamic model with white noise error not supported."))
@@ -33,28 +34,28 @@ function TensorAutoregression(
             similar(y, R, last(dims)-1), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
-            [similar(y, size(y, i), R) for i = 1:ndims(y)-1], 
+            [similar(y, dims[i], R) for i = 1:n], 
             R
         )
     else
         A = StaticKruskal(
             similar(y, R), 
-            [similar(y, size(y, i), R) for i = 1:ndims(y)-1], 
+            [similar(y, dims[i], R) for i = 1:n], 
             R
         )
     end
 
     # instantiate tensor error distribution
-    N = prod(dims[1:end-1])
+    N = prod(dims[1:n])
     if dist == :white_noise
         ε = WhiteNoise(
-            similar(y, dims[1:end-1]..., last(dims)-1), 
+            similar(y, dims[1:n]..., last(dims)-1), 
             Symmetric(similar(y, N, N))
         )
     elseif dist == :tensor_normal
         ε = TensorNormal(
             similar(y, dims[1:end-1]..., last(dims)-1), 
-            Symmetric(similar(y, N, N))
+            [Symmetric(similar(y, dims[i], dims[i])) for i = 1:n]
         )
     else
         throw(ArgumentError("distribution $dist not supported."))
