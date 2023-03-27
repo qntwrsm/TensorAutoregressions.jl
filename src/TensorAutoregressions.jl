@@ -23,6 +23,9 @@ export
     resid, cov, # residuals
     factors, loadings, rank, # Kruskal coefficient tensor
 
+    # simulate
+    simulate,
+
     ## fit
     fit!,
 
