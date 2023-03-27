@@ -69,6 +69,26 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
+    get_particles(y, A, ε) -> particles
+
+Helper function for retrieving forward sampled particles for dynamic model.
+"""
+function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
+    # collapsed state space system
+    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
+    # filter
+    (a, P, v, _, K) = filter(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    # predict
+    â = dynamics(A) * a[end] + K[end] * v[end]
+    P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
+
+    # sample particles
+    particles = particle_sampler(â, P̂, dynamics(A), cov(A), periods, 1e3, Xoshiro())
+
+    return particles
+end
+
+"""
     particle_sampler(a, P, T, Q, periods, samples, rng) -> particles
 
 Forward particle sampler of the filtered state `a` with corresponding variance

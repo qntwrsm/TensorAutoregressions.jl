@@ -175,25 +175,30 @@ model `model`.
 """
 function forecast(model::TensorAutoregression, periods::Integer)
     dims = size(data(model))
+    n = ndims(y) - 1
 
-    # forecast dynamic coefficients
+    # sample dynamic loadings particles
     if coef(model) isa DynamicKruskal
-        # TODO: implementation
-        error("dynamic coefficient forecasts not implemented.")
+        particles = get_particles(data(model), coef(model), dist(model))
     end
 
+    # outer product of Kruskal factors
+    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)] 
+
     # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:end-1]..., periods)
+    forecasts = similar(data(model), dims[1:n]..., periods)
+    # last observation
+    yT = selectdim(data(model), n+1, last(dims))
+    # forecast
     for h = 1:periods
-        if h == 1
-            # last observation
-            X = selectdim(data(model), ndims(data(model)), last(dims))
-        else
-            # previous forecast
-            X = selectdim(forecasts, ndims(forecasts), h - 1)
+        for r = 1:rank(model)
+            if coef(model) isa StaticKruskal
+                selectdim(forecasts, n+1, h) .= loadings(model)[r]^h * tucker(yT, U[r].^h, 1:n)
+            elseif coef(model) isa DynamicKruskal
+                λ̂ = mean(prod(particles[r,:,1:h], dims=2))
+                selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
+            end
         end
-        # forecast
-        selectdim(forecasts, ndims(forecasts), h) .= coef(model) * X
     end
 
     return forecasts
