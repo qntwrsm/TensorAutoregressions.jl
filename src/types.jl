@@ -182,7 +182,7 @@ mutable struct TensorAutoregression{
     ε::Tε
     A::TA
     function TensorAutoregression(y::AbstractArray, ε::AbstractTensorErrorDistribution, A::AbstractKruskal)
-        size(y) == size(resid(ε)) || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
+        size(y)[1:end-1] == size(resid(ε))[1:end-1] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all(size(y)[1:end-1] .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
