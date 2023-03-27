@@ -175,7 +175,7 @@ model `model`.
 """
 function forecast(model::TensorAutoregression, periods::Integer)
     dims = size(data(model))
-    n = ndims(y) - 1
+    n = ndims(data(model)) - 1
 
     # sample dynamic loadings particles
     if coef(model) isa DynamicKruskal
