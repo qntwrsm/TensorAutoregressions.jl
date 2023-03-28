@@ -177,7 +177,7 @@ function filter(
     for t ∈ eachindex(y)
         # forecast error
         v[t] = y[t] - Z[t] * a[t]
-        F[t] = Z[t] * P[t] * Z[t]'
+        F[t] = Z[t] * P[t] * Z[t]' + I
 
         # Kalman gain
         K[t] = T * P[t] * Z[t]' / F[t]
