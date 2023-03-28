@@ -76,7 +76,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    if isa(coef(model), StaticKruskal)
+    if coef(model) isa StaticKruskal
         A_sim = similar(coef(model))
         copyto!(A_sim, coef(model))
     else
@@ -103,11 +103,8 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
             yt .= selectdim(resid(ε_sim), n+1, t-1)
             # autoregressive component
             for r = 1:rank(model)
-                if isa(coef(model), StaticKruskal)
-                    yt .+= loadings(model)[r] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
-                elseif isa(coef(model), DynamicKruskal)
-                    yt .+= loadings(model)[r,t-1] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
-                end
+                λ = coef(model) isa StaticKruskal ? loadings(model)[r] : loadings(model)[r,t-1]
+                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
             end
         end
     end
