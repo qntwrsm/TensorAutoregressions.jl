@@ -71,7 +71,7 @@ end
 """
     get_particles(y, A, ε, periods) -> particles
 
-Helper function for retrieving forward sampled particles for for dynamic model.
+Helper function for retrieving forward sampled particles for the dynamic model.
 """
 function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, periods::Integer)
     # collapsed state space system
