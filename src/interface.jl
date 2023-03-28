@@ -183,7 +183,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
     end
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)] 
+    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)]
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
@@ -192,12 +192,8 @@ function forecast(model::TensorAutoregression, periods::Integer)
     # forecast
     for h = 1:periods
         for r = 1:rank(model)
-            if coef(model) isa StaticKruskal
-                selectdim(forecasts, n+1, h) .= loadings(model)[r]^h * tucker(yT, U[r].^h, 1:n)
-            elseif coef(model) isa DynamicKruskal
-                λ̂ = mean(prod(particles[r,:,1:h], dims=2))
-                selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
-            end
+            λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
+            selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
         end
     end
 
