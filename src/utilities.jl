@@ -133,7 +133,7 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
-    
+
     # collapsing
     X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
     Z_star = [norm(Xt) for Xt in eachslice(X, dims=n+1)]
@@ -248,12 +248,12 @@ function simulate(A::DynamicKruskal, rng::AbstractRNG)
     copyto!(A_sim, A)
 
     # simulate
-    for (t, λt) ∈ pairs(eachslice(loadings(A), dims=2))
+    for (t, λt) ∈ pairs(eachslice(loadings(A_sim), dims=2))
         if t == 1
             # initial condition
-            λt .= rand(rng, MvNormal(cov(A)))
+            λt .= rand(rng, MvNormal(cov(A_sim)))
         else
-            λt .= dynamics(A) * loadings(A)[:,t-1] + rand(rng, MvNormal(cov(A)))
+            λt .= dynamics(A_sim) * loadings(A_sim)[:,t-1] + rand(rng, MvNormal(cov(A_sim)))
         end
     end
 
@@ -280,7 +280,7 @@ function simulate(ε::TensorNormal, rng::AbstractRNG)
     # sample independent random normals and use tucker product with Cholesky 
     # decompositions
     for εt ∈ eachslice(resid(ε_sim), dims=n+1)
-        εt .= tucker(randn(rng, dims[1:end-1]...), C, 1:n)
+        εt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
     end
 
     return ε_sim
