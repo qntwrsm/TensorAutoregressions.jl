@@ -76,7 +76,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    if isa(coef(model), StaticKruskal)
+    if coef(model) isa StaticKruskal
         A_sim = similar(coef(model))
         copyto!(A_sim, coef(model))
     else
@@ -100,14 +100,11 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
             yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
         else
             # errors
-            yt .= selectdim(resid(model), n+1, t-1)
+            yt .= selectdim(resid(ε_sim), n+1, t-1)
             # autoregressive component
             for r = 1:rank(model)
-                if isa(coef(model), StaticKruskal)
-                    yt .+= loadings(model)[r] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
-                elseif isa(coef(model), DynamicKruskal)
-                    yt .+= loadings(model)[r,t-1] .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
-                end
+                λ = coef(model) isa StaticKruskal ? loadings(model)[r] : loadings(model)[r,t-1]
+                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
             end
         end
     end
@@ -175,25 +172,26 @@ model `model`.
 """
 function forecast(model::TensorAutoregression, periods::Integer)
     dims = size(data(model))
+    n = ndims(data(model)) - 1
 
-    # forecast dynamic coefficients
+    # sample dynamic loadings particles
     if coef(model) isa DynamicKruskal
-        # TODO: implementation
-        error("dynamic coefficient forecasts not implemented.")
+        particles = get_particles(data(model), coef(model), dist(model), periods)
     end
 
+    # outer product of Kruskal factors
+    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)]
+
     # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:end-1]..., periods)
+    forecasts = similar(data(model), dims[1:n]..., periods)
+    # last observation
+    yT = selectdim(data(model), n+1, last(dims))
+    # forecast
     for h = 1:periods
-        if h == 1
-            # last observation
-            X = selectdim(data(model), ndims(data(model)), last(dims))
-        else
-            # previous forecast
-            X = selectdim(forecasts, ndims(forecasts), h - 1)
+        for r = 1:rank(model)
+            λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
+            selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
         end
-        # forecast
-        selectdim(forecasts, ndims(forecasts), h) .= coef(model) * X
     end
 
     return forecasts

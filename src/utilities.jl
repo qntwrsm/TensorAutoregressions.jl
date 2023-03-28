@@ -69,6 +69,26 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
+    get_particles(y, A, ε, periods) -> particles
+
+Helper function for retrieving forward sampled particles for the dynamic model.
+"""
+function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, periods::Integer)
+    # collapsed state space system
+    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
+    # filter
+    (a, P, v, _, K) = filter(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    # predict
+    â = dynamics(A) * a[end] + K[end] * v[end]
+    P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
+
+    # sample particles
+    particles = particle_sampler(â, P̂, dynamics(A), cov(A), periods, 1000, Xoshiro())
+
+    return particles
+end
+
+"""
     particle_sampler(a, P, T, Q, periods, samples, rng) -> particles
 
 Forward particle sampler of the filtered state `a` with corresponding variance
@@ -113,16 +133,16 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
-    
+
     # collapsing
     X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
-    Z_star = [inv(norm(Xt)) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, Cinv', 1:n)
-    y_star = [inv(Z[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1))) for t = 1:last(dims)-1]
+    Z_star = [norm(Xt) for Xt in eachslice(X, dims=n+1)]
+    A_star = tucker(X, transpose.(Cinv), 1:n)
+    y_star = [[inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))] for t = 1:last(dims)-1]
 
     # initial conditions
-    a1 = zeros(eltype(y_star), rank(A))
-    P1 = Matrix{eltype(y_star)}(rank(A), rank(A))
+    a1 = zeros(eltype(y), rank(A))
+    P1 = Matrix{eltype(y)}(I, rank(A), rank(A))
 
     return (y_star, Z_star, a1, P1)
 end
@@ -157,14 +177,16 @@ function filter(
     for t ∈ eachindex(y)
         # forecast error
         v[t] = y[t] - Z[t] * a[t]
-        F[t] = Z[t] * P[t] * Z[t]'
+        F[t] = Z[t] * P[t] * Z[t]' + I
 
         # Kalman gain
         K[t] = T * P[t] * Z[t]' / F[t]
 
         # prediction
-        a[t+1] = T * a[t] + K[t] * v[t]
-        P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        if t < length(y)
+            a[t+1] = T * a[t] + K[t] * v[t]
+            P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        end
     end
 
     return (a, P, v, F, K)
@@ -226,12 +248,12 @@ function simulate(A::DynamicKruskal, rng::AbstractRNG)
     copyto!(A_sim, A)
 
     # simulate
-    for (t, λt) ∈ pairs(eachslice(loadings(A), dims=2))
+    for (t, λt) ∈ pairs(eachslice(loadings(A_sim), dims=2))
         if t == 1
             # initial condition
-            λt .= rand(rng, MvNormal(cov(A)))
+            λt .= rand(rng, MvNormal(cov(A_sim)))
         else
-            λt .= dynamics(A) * loadings(A)[:,t-1] + rand(rng, MvNormal(cov(A)))
+            λt .= dynamics(A_sim) * loadings(A_sim)[:,t-1] + rand(rng, MvNormal(cov(A_sim)))
         end
     end
 
@@ -244,7 +266,7 @@ end
 Simulate from the tensor error distribution `ε` using the random number
 generator `rng`.
 """
-simulate(ε::WhiteNoise, rng::AbstractRNG) = error("simulating data from white noise error not implemented.")
+simulate(ε::WhiteNoise, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
 function simulate(ε::TensorNormal, rng::AbstractRNG)
     ε_sim = similar(ε)
     copyto!(ε_sim, ε)
@@ -258,7 +280,7 @@ function simulate(ε::TensorNormal, rng::AbstractRNG)
     # sample independent random normals and use tucker product with Cholesky 
     # decompositions
     for εt ∈ eachslice(resid(ε_sim), dims=n+1)
-        εt .= tucker(randn(rng, dims[1:end-1]...), C, 1:n)
+        εt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
     end
 
     return ε_sim
