@@ -69,11 +69,11 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    get_particles(y, A, ε) -> particles
+    get_particles(y, A, ε, periods) -> particles
 
-Helper function for retrieving forward sampled particles for dynamic model.
+Helper function for retrieving forward sampled particles for for dynamic model.
 """
-function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
+function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, periods::Integer)
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # filter
@@ -83,7 +83,7 @@ function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
 
     # sample particles
-    particles = particle_sampler(â, P̂, dynamics(A), cov(A), periods, 1e3, Xoshiro())
+    particles = particle_sampler(â, P̂, dynamics(A), cov(A), periods, 1000, Xoshiro())
 
     return particles
 end
@@ -137,12 +137,12 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     # collapsing
     X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
     Z_star = [inv(norm(Xt)) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, Cinv', 1:n)
-    y_star = [inv(Z[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1))) for t = 1:last(dims)-1]
+    A_star = tucker(X, transpose.(Cinv), 1:n)
+    y_star = [[inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))] for t = 1:last(dims)-1]
 
     # initial conditions
-    a1 = zeros(eltype(y_star), rank(A))
-    P1 = Matrix{eltype(y_star)}(rank(A), rank(A))
+    a1 = zeros(eltype(y), rank(A))
+    P1 = Matrix{eltype(y)}(I, rank(A), rank(A))
 
     return (y_star, Z_star, a1, P1)
 end
@@ -183,8 +183,10 @@ function filter(
         K[t] = T * P[t] * Z[t]' / F[t]
 
         # prediction
-        a[t+1] = T * a[t] + K[t] * v[t]
-        P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        if t < length(y)
+            a[t+1] = T * a[t] + K[t] * v[t]
+            P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        end
     end
 
     return (a, P, v, F, K)
@@ -264,7 +266,7 @@ end
 Simulate from the tensor error distribution `ε` using the random number
 generator `rng`.
 """
-simulate(ε::WhiteNoise, rng::AbstractRNG) = error("simulating data from white noise error not implemented.")
+simulate(ε::WhiteNoise, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
 function simulate(ε::TensorNormal, rng::AbstractRNG)
     ε_sim = similar(ε)
     copyto!(ε_sim, ε)

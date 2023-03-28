@@ -100,7 +100,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
             yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
         else
             # errors
-            yt .= selectdim(resid(model), n+1, t-1)
+            yt .= selectdim(resid(ε_sim), n+1, t-1)
             # autoregressive component
             for r = 1:rank(model)
                 if isa(coef(model), StaticKruskal)
@@ -179,7 +179,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
 
     # sample dynamic loadings particles
     if coef(model) isa DynamicKruskal
-        particles = get_particles(data(model), coef(model), dist(model))
+        particles = get_particles(data(model), coef(model), dist(model), periods)
     end
 
     # outer product of Kruskal factors
