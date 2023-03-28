@@ -58,12 +58,12 @@ end
 
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(Σ))
+    C = [cholesky(Hermitian(Σi)).L for Σi ∈ Σ]
 
     # orthogonalize responses
     Ψ_orth = similar(Ψ)
     for (h, ψ) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tucker(ψ, C)
+        selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tucker(ψ, C, 1:ndims(ψ))
     end
     return Ψ_orth
 end
