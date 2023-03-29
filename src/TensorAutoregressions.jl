@@ -13,6 +13,9 @@ module TensorAutoregressions
 
 using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox
 
+import LinearAlgebra: rank
+import Statistics: cov
+
 export
     # main type + constructor
     TensorAutoregression,
