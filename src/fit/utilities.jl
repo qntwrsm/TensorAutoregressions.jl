@@ -27,8 +27,8 @@ function init!(model::TensorAutoregression)
     n = ndims(data(model)) - 1
 
     # lag and lead variables
-    y_lead = selectdim(y, n+1, 2:last(dims))
-    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+    y_lead = selectdim(data(model), n+1, 2:last(dims))
+    y_lag = selectdim(data(model), n+1, 1:last(dims)-1)
 
     # dependent variable and regressor
     z = reshape(y_lead, :, last(dims)-1)
