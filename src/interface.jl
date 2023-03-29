@@ -90,7 +90,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
     
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A_sim)[i] * factors(A_sim)[i+n]' for i = 1:n]
 
     # simulate data
     y_sim = similar(data(model))
@@ -102,8 +102,8 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
             # errors
             yt .= selectdim(resid(ε_sim), n+1, t-1)
             # autoregressive component
-            for r = 1:rank(model)
-                λ = A isa StaticKruskal ? loadings(A)[r] : loadings(A)[r,t-1]
+            for r = 1:rank(A_sim)
+                λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
                 yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
             end
         end
