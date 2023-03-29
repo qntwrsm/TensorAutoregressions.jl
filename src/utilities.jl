@@ -156,9 +156,9 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 
     # collapsing
     X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
-    Z_star = [norm(Xt) for Xt in eachslice(X, dims=n+1)]
+    Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
     A_star = tucker(X, transpose.(Cinv), 1:n)
-    y_star = [[inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))] for t = 1:last(dims)-1]
+    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))) for t = 1:last(dims)-1]
 
     # initial conditions
     a1 = zeros(eltype(y), rank(A))
