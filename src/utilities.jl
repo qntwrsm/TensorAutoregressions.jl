@@ -45,9 +45,14 @@ function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::Ten
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = get_particles(selectdim(y, ndims(y), 1:t), A, ε, n)
+        particles = get_particles(selectdim(y, ndims(y), 1:t+1), A, ε, n)
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
-            ψh .= h == 1 ? Id : mean(prod(particles[1,:,1:h], dims=2)) * An^(h - 1)
+            if h == 1
+                ψh .= Id 
+            else
+                λ = mean(prod(particles[1,:,1:h-1], dims=2))
+                ψh .= λ * tensorize(An^(h - 1), 1:ndims(ψh)÷2, size(ψh))
+            end
         end
     end
 

@@ -206,7 +206,11 @@ response functions are computed.
 """
 function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
     # moving average representation
-    Ψ = moving_average(coef(model), periods)
+    if coef(model) isa StaticKruskal
+        Ψ = moving_average(coef(model), periods)
+    else
+        Ψ = moving_average(coef(model), periods, data(model), dist(model))
+    end
 
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
