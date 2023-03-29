@@ -32,9 +32,31 @@ function moving_average(A::StaticKruskal, n::Integer)
     return Ψ
 end
 
-function moving_average(A::DynamicKruskal, n::Integer)
-    # TODO: implementation
-    error("moving average representation not implemented for dynamic model.")
+function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::TensorNormal)
+    dims = size(A)
+
+    # tensorize identity matrix
+    Id = tensorize(I(prod(size(y)[1:end-1])), 1:(length(dims)-1)÷2, dims[1:end-1])
+
+    # matricize Kruskal tensor
+    An = matricize(full(A), 1:(length(dims)-1)÷2)
+
+    # moving average coefficients
+    Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
+    for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
+        # sample particles
+        particles = get_particles(selectdim(y, ndims(y), 1:t+1), A, ε, n)
+        for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
+            if h == 1
+                ψh .= Id 
+            else
+                λ = mean(prod(particles[1,:,1:h-1], dims=2))
+                ψh .= λ * tensorize(An^(h - 1), 1:ndims(ψh)÷2, size(ψh))
+            end
+        end
+    end
+
+    return Ψ
 end
 
 """
@@ -58,13 +80,11 @@ end
 
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(Σ))
+    C = [cholesky(Hermitian(Σi)).L for Σi ∈ Σ]
 
     # orthogonalize responses
-    Ψ_orth = similar(Ψ)
-    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tucker(ψ, C)
-    end
+    Ψ_orth = tucker(Ψ, C, 1:length(C))
+
     return Ψ_orth
 end
 
