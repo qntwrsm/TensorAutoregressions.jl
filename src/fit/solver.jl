@@ -125,7 +125,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
         U[k] = factors(A)[k] * factors(A)[k+n]'
 
         # update covariance
-        Ek = Zk - loadings(A)[1] .* Uk * Xk
+        Ek = Zk - loadings(A)[1] .* U[k] * Xk
         mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
         # normalize
         k == 1 && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
