@@ -173,7 +173,7 @@ end
 Update and normalize factor `u` using regression based on projection matrix `P`
 and companion factor `w`.
 """
-function update_factor!(u::AbstractVector, w::AbstractVector, P::AbstractMatrix, scale::Real)
+function update_factor!(u::AbstractVecOrMat, w::AbstractVecOrMat, P::AbstractMatrix, scale::Real)
     # update factor
     mul!(u, P, w, scale, zero(eltype(u)))
     # normalize
