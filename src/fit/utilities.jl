@@ -38,7 +38,7 @@ function init!(model::TensorAutoregression)
     F = hessenberg(x * x')
     M = z * x'
     # gridsearch
-    γ = exp10.(range(-3, 3, length=100))
+    γ = exp10.(range(0, 3, length=100))
     β = similar(γ, typeof(M))
     bic = similar(γ)
     for (i, γi) ∈ pairs(γ)

@@ -128,7 +128,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
         Ek = Zk - loadings(A)[1] .* U[k] * Xk
         mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
         # normalize
-        k == 1 && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
+        k != n && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
     
         # update scaling
         Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
@@ -201,8 +201,8 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     φ_cross = γ̂ + σ̂_lead .* σ̂_lag
 
     # update dynamics
-    dynamics(A) = sum(φ_cross) * inv(sum(φ_lag))
-    cov(A) = inv(length(loadings(A)) - 1) * (sum(φ_lead) - sum(x -> abs2(x[1]) * inv(x[2]), zip(φ_cross, φ_lag)))
+    dynamics(A) .= sum(φ_cross) * inv(sum(φ_lag))
+    cov(A) .= inv(length(loadings(A)) - 1) * (sum(φ_lead) - sum(x -> abs2(x[1]) * inv(x[2]), zip(φ_cross, φ_lag)))
 
     return nothing
 end
@@ -280,10 +280,10 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
         cov(ε)[k].data .+= inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk'
         # normalize
-        k == 1 && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
+        k != n && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
 
         # update scaling
-        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k].data)).L)
+        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
         S[k] = Cinv[k] * U[k]
     end
 
