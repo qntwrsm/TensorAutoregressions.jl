@@ -32,9 +32,26 @@ function moving_average(A::StaticKruskal, n::Integer)
     return Ψ
 end
 
-function moving_average(A::DynamicKruskal, n::Integer)
-    # TODO: implementation
-    error("moving average representation not implemented for dynamic model.")
+function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::TensorNormal)
+    dims = size(A)
+
+    # tensorize identity matrix
+    Id = tensorize(I(prod(size(y)[1:end-1])), 1:(length(dims)-1)÷2, dims[1:end-1])
+
+    # matricize Kruskal tensor
+    An = matricize(full(A), 1:(length(dims)-1)÷2)
+
+    # moving average coefficients
+    Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
+    for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
+        # sample particles
+        particles = get_particles(selectdim(y, ndims(y), 1:t), A, ε, n)
+        for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
+            ψh .= h == 1 ? Id : mean(prod(particles[1,:,1:h], dims=2)) * An^(h - 1)
+        end
+    end
+
+    return Ψ
 end
 
 """
