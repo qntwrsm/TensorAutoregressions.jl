@@ -74,7 +74,7 @@ function init!(model::TensorAutoregression)
         λ_lead = @view loadings(model)[:,2:end]
         λ_lag = @view loadings(model)[:,1:end-1]
         dynamics(coef(model)) .= λ_lead / λ_lag
-        cov(coef(model)).data .= cov(λ_lead - dynamics(coef(model)) * λ_lag, dims=2)
+        cov(coef(model)).data .= I - dynamics(coef(model)) * dynamics(coef(model))'
     end
     
     # error distribution
