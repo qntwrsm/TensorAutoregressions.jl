@@ -75,9 +75,11 @@ end
 # methods
 factors(A::AbstractKruskal) = A.U
 loadings(A::AbstractKruskal) = A.λ
-rank(A::AbstractKruskal) = A.R
+LinearAlgebra.rank(A::AbstractKruskal) = A.R
 Base.size(A::AbstractKruskal) = tuple(size.(factors(A), 1)...)
+Base.size(A::DynamicKruskal) = tuple(size.(factors(A), 1)..., size(loadings(A), 2))
 full(A::AbstractKruskal) = tucker(loadings(A) .* I(length(factors(A)), rank(A)), factors(A))
+full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
 dynamics(A::DynamicKruskal) = A.ϕ
 Statistics.cov(A::DynamicKruskal) = A.Σ
 Base.similar(A::StaticKruskal) = StaticKruskal(similar(loadings(A)), similar.(factors(A)), rank(A))
@@ -199,7 +201,7 @@ resid(model::TensorAutoregression) = resid(dist(model))
 Statistics.cov(model::TensorAutoregression) = cov(dist(model))
 factors(model::TensorAutoregression) = factors(coef(model))
 loadings(model::TensorAutoregression) = loadings(coef(model))
-rank(model::TensorAutoregression) = rank(coef(model))
+LinearAlgebra.rank(model::TensorAutoregression) = rank(coef(model))
 Base.similar(model::TensorAutoregression) = TensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)))
 function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
     copyto!(data(dest), data(src))
