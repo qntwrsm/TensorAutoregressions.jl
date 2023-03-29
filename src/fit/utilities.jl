@@ -50,7 +50,7 @@ function init!(model::TensorAutoregression)
     β_star = β[argmin(bic)]
 
     # CP decomposition
-    cp = cp_als(reshape(β_star, dims[1:n]...), rank(model))
+    cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(model))
     # factors
     factors(model) .= cp.fmat
     # loadings
@@ -93,7 +93,7 @@ function init!(model::TensorAutoregression)
         cov(model).data .= cov(reshape(resid(model), :, 1:last(dims)-1), dims=2)
     else
         for k = 1:n
-            cov(model)[i].data .= cov(matricize(resid(model), k), dims=2)
+            cov(model)[k].data .= cov(matricize(resid(model), k), dims=2)
         end
     end
 
