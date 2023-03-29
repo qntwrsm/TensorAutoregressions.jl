@@ -107,20 +107,19 @@ Calculate the maximum absolute difference between `x` and `y`.
 """
 absdiff(x::AbstractArray, y::AbstractArray) = mapreduce((xi, yi) -> abs(xi - yi), max, x, y)
 absdiff(ε::WhiteNoise, ε_prev::WhiteNoise) = absdiff(cov(ε), cov(ε_prev))
-absdiff(ε::TensorNormal, ε_prev::TensorNormal) = absdiff.(cov(ε), cov(ε_prev))
+absdiff(ε::TensorNormal, ε_prev::TensorNormal) = maximum(absdiff.(cov(ε), cov(ε_prev)))
 function absdiff(A::StaticKruskal, A_prev::StaticKruskal)
     δ_loadings = absdiff(loadings(A), loadings(A_prev))
-    δ_factors = absdiff(factors(A), factors(A_prev))
+    δ_factors = maximum(absdiff.(factors(A), factors(A_prev)))
 
     return max(δ_loadings, δ_factors)
 end
 function absdiff(A::DynamicKruskal, A_prev::DynamicKruskal)
-    δ_loadings = absdiff(loadings(A), loadings(A_prev))
-    δ_factors = absdiff.(factors(A), factors(A_prev))
+    δ_factors = maximum(absdiff.(factors(A), factors(A_prev)))
     δ_dynamics = absdiff(dynamics(A), dynamics(A_prev))
     δ_cov = absdiff(cov(A), cov(A_prev))
 
-    return max(δ_loadings, δ_factors, δ_dynamics, δ_cov)
+    return max(δ_factors, δ_dynamics, δ_cov)
 end
 function absdiff(model::TensorAutoregression, model_prev::TensorAutoregression)
     δ_coef = absdiff(coef(model), coef(model_prev))
