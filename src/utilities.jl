@@ -83,7 +83,7 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     C = [cholesky(Hermitian(Σi)).L for Σi ∈ Σ]
 
     # orthogonalize responses
-    Ψ_orth .= tucker(Ψ, C, 1:length(C))
+    Ψ_orth = tucker(Ψ, C, 1:length(C))
 
     return Ψ_orth
 end
