@@ -43,7 +43,7 @@ function init!(model::TensorAutoregression)
     bic = similar(γ)
     for (i, γi) ∈ pairs(γ)
         β[i] = M / (F + γi * I)
-        rss = norm(z - β * x)^2
+        rss = norm(z - β[i] * x)^2
         bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + size(x, 1) * log(last(dims) - 1)
     end
     # optimal
