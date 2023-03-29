@@ -128,7 +128,7 @@ and tensor normal errors.
 function fit!(
     model::TensorAutoregression, 
     ϵ::AbstractFloat=1e-4, 
-    max_iter::Integer=1e3, 
+    max_iter::Integer=1000, 
     verbose::Bool=false
 )
     rank(model) != 1 || error("general rank R model fitting not implemented.")
