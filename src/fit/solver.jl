@@ -156,9 +156,9 @@ function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # smoother
     (α̂, V, Γ) = smoother(y_star, Z_star, dynamics(A), cov(A), a1, P1)
-    loadings(A) .= vcat(α̂...)
-    σ̂ = vcat(V...)
-    γ̂ = vcat(Γ...)
+    loadings(A) .= hcat(α̂...)
+    σ̂ = vec(vcat(V...))
+    γ̂ = vec(vcat(Γ...))
 
     # M-step
     update_dynamic!(A, σ̂, γ̂)
@@ -235,7 +235,7 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
     y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
     # smoother variables
-    φ = σ̂ + abs2.(loadings(A))
+    φ = σ̂ + abs2.(vec(loadings(A)))
 
     for k = 1:n
         m = setdiff(1:n, k)
@@ -248,7 +248,7 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
 
         # repeat/extent smoother variables
         σ̂_ext = repeat(σ̂, inner=prod(dims[m]))
-        λ̂_ext = repeat(loadings(A), inner=prod(dims[m]))
+        λ̂_ext = repeat(vec(loadings(A)), inner=prod(dims[m]))
         φ_ext = repeat(φ, inner=prod(dims[m]))
 
         # Gram matrix
@@ -278,7 +278,7 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         μk = U[k] * Xk
         Ek = Zk - λ̂_ext' .* μk
         mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        cov(ε)[k].data += inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk'
+        cov(ε)[k].data .+= inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk'
         # normalize
         k == 1 && lmul!(inv(norm(cov(ε)[k].data)), cov(ε)[k].data)
 
