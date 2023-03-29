@@ -131,7 +131,7 @@ function fit!(
     max_iter::Integer=1000, 
     verbose::Bool=false
 )
-    rank(model) != 1 || error("general rank R model fitting not implemented.")
+    rank(model) == 1 || error("general rank R model fitting not implemented.")
     
     # initialization of model parameters
     init!(model)
