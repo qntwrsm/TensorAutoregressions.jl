@@ -149,8 +149,6 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 end
 
 function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
-    dims = size(y)
-
     # E-step
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
@@ -191,12 +189,12 @@ loadings variance `σ̂`, and autocovariance `γ̂`.
 function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::AbstractVector)
     # lags and leads
     λ̂_lag = @view loadings(A)[1:end-1]
+    λ̂_lead = @view loadings(A)[2:end]
     σ̂_lag = @view σ̂[1:end-1]
-    σ̂_lead = @view σ̂[2:end]
 
     # second moments
     φ_lag = σ̂_lag + abs2.(λ̂_lag)
-    φ_cross = γ̂ + σ̂_lead .* σ̂_lag
+    φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # update dynamics
     dynamics(A) .= sum(φ_cross) * inv(sum(φ_lag))
