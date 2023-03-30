@@ -25,8 +25,8 @@ function moving_average(A::StaticKruskal, n::Integer)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
-    for h = 0:n
-        selectdim(Ψ, ndims(Ψ), h+1) .= tensorize(An^h, 1:length(dims)÷2, dims)
+    for (h, ψh) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
+        ψh .= tensorize(An^(h-1), 1:ndims(ψh)÷2, dims)
     end
 
     return Ψ
@@ -51,7 +51,7 @@ function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::Ten
                 ψh .= Id 
             else
                 λ = mean(prod(particles[1,:,1:h-1], dims=2))
-                ψh .= λ * tensorize(An^(h - 1), 1:ndims(ψh)÷2, size(ψh))
+                ψh .= λ * tensorize(An^(h-1), 1:ndims(ψh)÷2, size(ψh))
             end
         end
     end

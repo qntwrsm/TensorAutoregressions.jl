@@ -187,11 +187,9 @@ function forecast(model::TensorAutoregression, periods::Integer)
     # last observation
     yT = selectdim(data(model), n+1, last(dims))
     # forecast
-    for h = 1:periods
-        for r = 1:rank(model)
-            λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
-            selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
-        end
+    for h = 1:periods, r = 1:rank(model)
+        λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
+        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
     end
 
     return forecasts
