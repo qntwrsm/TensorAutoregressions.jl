@@ -153,6 +153,15 @@ end
 # methods
 resid(ε::AbstractTensorErrorDistribution) = ε.ε
 cov(ε::AbstractTensorErrorDistribution) = ε.Σ
+full(ε::WhiteNoise) = cov(ε)
+function full(ε::TensorNormal)
+    Σ_full = cov(ε)[end]
+    for Σi ∈ reverse(cov(ε)[1:end-1])
+        Σ_full = kron(Σ_full, Σi)
+    end
+
+    return Σ_full
+end
 Base.similar(ε::WhiteNoise) = WhiteNoise(similar(resid(ε)), similar(cov(ε)))
 Base.similar(ε::TensorNormal) = TensorNormal(similar(resid(ε)), similar.(cov(ε)))
 function Base.copyto!(dest::WhiteNoise, src::WhiteNoise)
@@ -198,7 +207,7 @@ data(model::TensorAutoregression) = model.y
 coef(model::TensorAutoregression) = model.A
 dist(model::TensorAutoregression) = model.ε
 resid(model::TensorAutoregression) = resid(dist(model))
-cov(model::TensorAutoregression) = cov(dist(model))
+cov(model::TensorAutoregression, full::Bool=false) = full ? full(dist(model)) : cov(dist(model))
 factors(model::TensorAutoregression) = factors(coef(model))
 loadings(model::TensorAutoregression) = loadings(coef(model))
 rank(model::TensorAutoregression) = rank(coef(model))
