@@ -55,7 +55,7 @@ function init!(model::TensorAutoregression)
     factors(model) .= cp.fmat
     # loadings
     if isa(coef(model), StaticKruskal)
-        loadings(model) .= cp.lambda
+        loadings(model) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
     else
         xt = similar(x, size(x, 1), rank(model))
         for t = 1:last(dims)-1
