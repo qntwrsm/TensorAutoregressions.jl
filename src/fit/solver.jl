@@ -49,7 +49,7 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
             inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
         )
         # update factor k+n
-        update_factor!(factors(A)[k+n], factors(A)[k], inv(G) * M', inv(loadings(A)[1]))
+        update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
 
         # update outer product of Kruskal factors
         U[k] = factors(A)[k] * factors(A)[k+n]'
@@ -117,7 +117,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
         update_factor!(
             factors(A)[k+n], 
             factors(A)[k], 
-            inv(G) * M' * Ω[k], 
+            G \ M' * Ω[k], 
             inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
         )
 
@@ -263,7 +263,7 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         update_factor!(
             factors(A)[k+n], 
             factors(A)[k], 
-            inv(G) * M' * Ω[k], 
+            G \ M' * Ω[k], 
             inv(dot(factors(A)[k], Ω[k], factors(A)[k]))
         )
 
