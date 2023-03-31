@@ -25,7 +25,7 @@ function confidence_bounds(
     # Monte Carlo estimation
     for s = 1:samples
         # simulate model
-        sim = simulate(model, burn, rng)
+        sim = simulate(model, burn=burn, rng=rng)
 
         # fit simulated model
         fit!(sim)

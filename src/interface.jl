@@ -65,13 +65,13 @@ function TensorAutoregression(
 end
 
 """
-    simulate(model, rng=Xoshiro()) -> model_sim
+    simulate(model; burn=100, rng=Xoshiro()) -> sim
 
 Simulate data from the tensor autoregressive model described by `model` and
 return a new instance with the simulated data, using random number generator
-`rng`.
+`rng` and apply a burn-in period of `burn`.
 """
-function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
+function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractRNG=Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -79,12 +79,13 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     if coef(model) isa StaticKruskal
         A_sim = similar(coef(model))
         copyto!(A_sim, coef(model))
+        A_burn = A_sim
     else
-        A_sim = simulate(coef(model), rng)
+        (A_sim, A_burn) = simulate(coef(model), burn=burn, rng=rng)
     end
 
     # tensor error distribution
-    ε_sim = simulate(dist(model), rng)
+    (ε_sim, ε_burn) = simulate(dist(model), burn=burn, rng=rng)
 
     # Cholesky decompositions of Σᵢ
     C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
@@ -92,20 +93,33 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     # outer product of Kruskal factors
     U = [factors(A_sim)[i] * factors(A_sim)[i+n]' for i = 1:n]
 
-    # simulate data
-    y_sim = similar(data(model))
-    for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
+    # burn-in
+    y_burn = similar(data(model), dims[1:n]..., burn)
+    for (t, yt) ∈ pairs(eachslice(y_burn, dims=n+1))
         if t == 1
             # initial condition
             yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n+1, t-1)
+            yt .= selectdim(resid(ε_burn), n+1, t-1)
             # autoregressive component
-            for r = 1:rank(A_sim)
-                λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
-                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
+            for r = 1:rank(A_burn)
+                λ = A_burn isa StaticKruskal ? loadings(A_burn)[r] : loadings(A_burn)[r,t-1]
+                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U, 1:n)
             end
+        end
+    end
+
+    # simulate data
+    y_sim = similar(data(model))
+    for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
+        yt_lag = t == 1 ? selectdim(y_burn, n+1, burn) : selectdim(y_sim, n+1, t-1)
+        # errors
+        yt .= selectdim(resid(ε_sim), n+1, t-1)
+        # autoregressive component
+        for r = 1:rank(A_sim)
+            λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
+            yt .+= λ .* tucker(yt_lag, U, 1:n)
         end
     end
 
@@ -113,7 +127,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
 end
 
 """
-    fit!(model, ϵ=1e-4, max_iter=1e3, verbose=false) -> model
+    fit!(model; ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
@@ -126,7 +140,7 @@ maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
 function fit!(
-    model::TensorAutoregression, 
+    model::TensorAutoregression; 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
     verbose::Bool=false
