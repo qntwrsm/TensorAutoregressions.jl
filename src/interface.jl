@@ -217,7 +217,7 @@ function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
     # confidence bounds
-    (lower, upper) = confidence_bounds(model, α)
+    (lower, upper) = confidence_bounds(model, periods, α, orth)
 
     return (Ψ, lower, upper)
 end

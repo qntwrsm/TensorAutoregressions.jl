@@ -11,6 +11,49 @@ utilities.jl
 @date: 2023/07/02
 =#
 
+function confidence_bounds(
+    model::TensorAutoregression, 
+    periods::Integer,
+    α::Real, 
+    orth::Bool, 
+    samples::Integer=1000, 
+    burn::Integer=100, 
+    rng::AbstractRNG=Xoshiro()
+)   
+    Ψ = Vector{Array}(undef, samples)
+
+    # Monte Carlo estimation
+    for s = 1:samples
+        # simulate model
+        sim = simulate(model, burn, rng)
+
+        # fit simulated model
+        fit!(sim)
+
+        # moving average representation
+        if coef(model) isa StaticKruskal
+            Ψ[s] = moving_average(coef(sim), periods)
+        else
+            Ψ[s] = moving_average(coef(sim), periods, data(sim), dist(sim))
+        end
+
+        # orthogonalize
+        orth ? Ψ[s] = orthogonalize(Ψ[s], cov(sim)) : nothing
+    end
+
+    # quantiles
+    lower_idx = round(Int, samples * α / 2)
+    upper_idx = round(Int, samples * (1. - α / 2))
+
+    # confidence bounds
+    Ψ = cat(Ψ..., dims=ndims(Ψ[1])+1)
+    Ψ_sorted = sort(Ψ, dims=ndims(Ψ))
+    lower = selectdim(Ψ_sorted, ndims(Ψ_sorted), lower_idx)
+    upper = selectdim(Ψ_sorted, ndims(Ψ_sorted), upper_idx)
+
+    return (lower, upper)
+end
+
 """
     moving_average(A, n[, y, ε]) -> Ψ
 
