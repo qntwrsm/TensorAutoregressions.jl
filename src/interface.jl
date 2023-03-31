@@ -196,13 +196,16 @@ function forecast(model::TensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods, orth=false) -> Ψ
+    irf(model, periods; α=.05, orth=false) -> (Ψ, lower, upper)
 
-Compute impulse response functions `periods` periods ahead using fitted tensor
-autoregressive model `model`. If `orth` is true, the orthogonalized impulse
-response functions are computed.
+Compute impulse response functions `periods` periods ahead and corresponding
+`α`% upper and lower confidence bounds using fitted tensor autoregressive model
+`model`. Upper and lower confidence bounds are computed using Monte Carlo
+simulation.
+If `orth` is true, the orthogonalized impulse response functions are
+computed.
 """
-function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
+function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::Bool=false)
     # moving average representation
     if coef(model) isa StaticKruskal
         Ψ = moving_average(coef(model), periods)
@@ -213,5 +216,8 @@ function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
-    return Ψ
+    # confidence bounds
+    (lower, upper) = confidence_bounds(model, α)
+
+    return (Ψ, lower, upper)
 end
