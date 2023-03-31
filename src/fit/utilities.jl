@@ -38,13 +38,14 @@ function init!(model::TensorAutoregression)
     F = hessenberg(x * x')
     M = z * x'
     # gridsearch
-    γ = exp10.(range(0, 3, length=100))
+    γ = exp10.(range(0, 4, length=100))
     β = similar(γ, typeof(M))
     bic = similar(γ)
     for (i, γi) ∈ pairs(γ)
         β[i] = M / (F + γi * I)
         rss = norm(z - β[i] * x)^2
-        bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + size(x, 1) * log(last(dims) - 1)
+        df = tr(x' / (F + γi * I) * x)
+        bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + df * log(last(dims) - 1)
     end
     # optimal
     β_star = β[argmin(bic)]
