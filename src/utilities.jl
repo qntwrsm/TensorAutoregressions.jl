@@ -12,7 +12,7 @@ utilities.jl
 =#
 
 """
-    moving_average(A, n) -> Ψ
+    moving_average(A, n[, y, ε]) -> Ψ
 
 Moving average, ``MA(∞)``, representation of the tensor autoregressive model
 with Kruskal coefficient tensor `A`, computed up to the `n`th term.
