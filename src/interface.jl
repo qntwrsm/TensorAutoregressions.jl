@@ -110,13 +110,12 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
         if t == 1
             yt .= selectdim(y_burn, n+1, burn+1)
         else
-            yt_lag = selectdim(y_sim, n+1, t-1)
             # errors
             yt .= selectdim(resid(ε_sim), n+1, t-1)
             # autoregressive component
             for r = 1:rank(A_sim)
                 λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
-                yt .+= λ .* tucker(yt_lag, U, 1:n)
+                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U, 1:n)
             end
         end
     end
