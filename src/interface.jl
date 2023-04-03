@@ -85,23 +85,17 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
     end
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn, rng)
-
-    # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
+    (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
     
     # outer product of Kruskal factors
     U = [factors(A_sim)[i] * factors(A_sim)[i+n]' for i = 1:n]
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn)
+    y_burn = similar(data(model), dims[1:n]..., burn+1)
     for (t, yt) ∈ pairs(eachslice(y_burn, dims=n+1))
-        if t == 1
-            # initial condition
-            yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
-        else
-            # errors
-            yt .= selectdim(resid(ε_burn), n+1, t-1)
+        # errors
+        yt .= selectdim(resid(ε_burn), n+1, t)
+        if t > 1
             # autoregressive component
             for r = 1:rank(A_burn)
                 λ = A_burn isa StaticKruskal ? loadings(A_burn)[r] : loadings(A_burn)[r,t-1]
@@ -113,13 +107,17 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
     # simulate data
     y_sim = similar(data(model))
     for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
-        yt_lag = t == 1 ? selectdim(y_burn, n+1, burn) : selectdim(y_sim, n+1, t-1)
-        # errors
-        yt .= selectdim(resid(ε_sim), n+1, t-1)
-        # autoregressive component
-        for r = 1:rank(A_sim)
-            λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
-            yt .+= λ .* tucker(yt_lag, U, 1:n)
+        if t == 1
+            yt .= selectdim(y_burn, n+1, burn+1)
+        else
+            yt_lag = selectdim(y_sim, n+1, t-1)
+            # errors
+            yt .= selectdim(resid(ε_sim), n+1, t-1)
+            # autoregressive component
+            for r = 1:rank(A_sim)
+                λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
+                yt .+= λ .* tucker(yt_lag, U, 1:n)
+            end
         end
     end
 
