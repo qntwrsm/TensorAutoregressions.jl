@@ -81,11 +81,11 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
         copyto!(A_sim, coef(model))
         A_burn = A_sim
     else
-        (A_sim, A_burn) = simulate(coef(model), burn=burn, rng=rng)
+        (A_sim, A_burn) = simulate(coef(model), burn, rng)
     end
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn=burn, rng=rng)
+    (ε_sim, ε_burn) = simulate(dist(model), burn, rng)
 
     # Cholesky decompositions of Σᵢ
     C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
