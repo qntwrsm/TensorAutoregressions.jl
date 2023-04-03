@@ -364,7 +364,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
         cov(ε)
     )
     # burn-in
-    for εt ∈ eachslice(resid(ε_sim), dims=n+1)
+    for εt ∈ eachslice(resid(ε_burn), dims=n+1)
         # sample independent random normals and use tucker product with Cholesky 
         # decompositions
         εt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
