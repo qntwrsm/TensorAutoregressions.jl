@@ -220,3 +220,54 @@ function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
     return dest
 end
 Base.copy(model::TensorAutoregression) = copyto!(similar(model), model)
+
+# Impulse response functions
+"""
+    AbstractIRF
+
+Abstract type for impulse response functions (IRFs).
+"""
+abstract type AbstractIRF end
+
+"""
+    StaticIRF <: AbstractIRF
+
+Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and
+`orth` as whether the IRF is orthogonalized.
+"""
+mutable struct StaticIRF{TΨ<:AbstractArray} <: AbstractIRF
+    Ψ::TΨ
+    lower::TΨ
+    upper::TΨ
+    orth::Bool
+    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray, orth::Bool)
+        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    end
+end
+
+"""
+    DynamicIRF <: AbstractIRF
+
+Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and
+`orth` as whether the IRF is orthogonalized.
+"""
+mutable struct DynamicIRF{TΨ<:AbstractArray} <: AbstractIRF
+    Ψ::TΨ
+    lower::TΨ
+    upper::TΨ
+    orth::Bool
+    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray, orth::Bool)
+        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    end
+end
+
+# methods
+irf(Ψ::AbstractIRF) = Ψ.Ψ
+irf(Ψ::StaticIRF, response, impulse) = @view irf(Ψ)[response..., impulse..., :]
+irf(Ψ::DynamicIRF, response, impulse) = @view irf(Ψ)[response..., impulse..., :, :]
+irf(Ψ::DynamicIRF, response, impulse, time) = @view irf(Ψ)[response..., impulse..., :, time...]
+lower(Ψ::AbstractIRF) = Ψ.lower
+upper(Ψ::AbstractIRF) = Ψ.upper
+orth(Ψ::AbstractIRF) = Ψ.orth 

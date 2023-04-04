@@ -11,10 +11,14 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox
+using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox, CairoMakie
 
 import LinearAlgebra: rank
 import Statistics: cov
+
+# Makie backend and theme
+CairoMakie.activate!()
+set_theme!(theme_minimal())
 
 export
     # main type + constructor
