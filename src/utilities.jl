@@ -12,7 +12,7 @@ utilities.jl
 =#
 
 """
-    confidence_bounds(model, periods, α, orth, samples=1000, burn=100, rng=Xoshiro()) -> (lower, upper)
+    confidence_bounds(model, periods, α, orth, samples=100, burn=100, rng=Xoshiro()) -> (lower, upper)
 
 Compute Monte Carlo `α`% confidence bounds for impulse response functions of the
 tensor autoregressive model given by `model`. The confidence boudns are
@@ -24,7 +24,7 @@ function confidence_bounds(
     periods::Integer,
     α::Real, 
     orth::Bool, 
-    samples::Integer=1000, 
+    samples::Integer=100, 
     burn::Integer=100, 
     rng::AbstractRNG=Xoshiro()
 )   
