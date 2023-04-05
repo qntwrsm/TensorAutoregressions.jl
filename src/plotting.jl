@@ -17,6 +17,9 @@ impulse `impulse`. When `irfs` is dynamic `time` can be provided to plot the
 impulse response function for a specific time period.
 """
 function irf_plot(irfs::StaticIRF, response, impulse)
+    ψ = irf(irfs, response, impulse)
+    periods = length(ψ) - 1
+
     # setup figure
     fig = Figure()
     ax = Axis(
@@ -24,20 +27,25 @@ function irf_plot(irfs::StaticIRF, response, impulse)
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
-        xlabel="periods" 
+        xlabel="periods",
+        xticks=(0:periods, ["$h" for h = 0:periods])
     )
 
     # impulse response function
-    lines!(ax, irf(irfs, response, impulse), color=:black)
+    lines!(ax, 0:periods, ψ, color=:black)
 
     # confidence bands
-    lines!(ax, lower(irfs, response, impulse), color=:gray50, linestyle=:dash)
-    lines!(ax, upper(irfs, response, impulse), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, lower(irfs, response, impulse), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, upper(irfs, response, impulse), color=:gray50, linestyle=:dash)
 
     return fig
 end
 
 function irf_plot(irfs::DynamicIRF, response, impulse)
+    ψ = irf(irfs, response, impulse)
+    periods = size(ψ, 1) - 1
+    time = size(ψ, 2)
+
     # setup figure
     fig = Figure()
     ax = Axis3(
@@ -46,16 +54,20 @@ function irf_plot(irfs::DynamicIRF, response, impulse)
         titlealign=:left,
         titlecolor=:gray50,
         xlabel="time",
-        ylabel="periods"
+        ylabel="periods",
+        yticks=(0:periods, ["$h" for h = 0:periods])
     )
 
     # impulse response function
-    surface!(ax, irf(irfs, response, impulse))
+    surface!(ax, 1:time, 0:periods, ψ')
 
     return fig
 end
 
 function irf_plot(irfs::DynamicIRF, response, impulse, time)
+    ψ = irf(irfs, response, impulse, time)
+    periods = size(ψ, 1) - 1
+
     # setup figure
     fig = Figure()
     ax = Axis3(
@@ -64,16 +76,20 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time)
         titlealign=:left,
         titlecolor=:gray50,
         xlabel="time",
-        ylabel="periods" 
+        ylabel="periods",
+        yticks=(0:periods, ["$h" for h = 0:periods])
     )
 
     # impulse response function
-    surface!(ax, irf(irfs, response, impulse, time))
+    surface!(ax, time, 0:periods, ψ')
 
     return fig
 end
 
 function irf_plot(irfs::DynamicIRF, response, impulse, time::Integer)
+    ψ = irf(irfs, response, impulse, time)
+    periods = length(ψ) - 1
+
     # setup figure
     fig = Figure()
     ax = Axis(
@@ -81,15 +97,16 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time::Integer)
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
-        xlabel="periods" 
+        xlabel="periods",
+        xticks=(0:periods, ["$h" for h = 0:periods])
     )
 
     # impulse response function
-    lines!(ax, irf(irfs, response, impulse, time), color=:black)
+    lines!(ax, 0:periods, ψ, color=:black)
 
     # confidence bands
-    lines!(ax, lower(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
-    lines!(ax, upper(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, lower(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, upper(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
 
     return fig
 end
