@@ -20,7 +20,7 @@ function irf_plot(irfs::StaticIRF, response, impulse)
     # setup figure
     fig = Figure()
     ax = Axis(
-        fig, 
+        fig[1,1], 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
@@ -41,7 +41,7 @@ function irf_plot(irfs::DynamicIRF, response, impulse)
     # setup figure
     fig = Figure()
     ax = Axis3(
-        fig, 
+        fig[1,1], 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
@@ -59,7 +59,7 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time)
     # setup figure
     fig = Figure()
     ax = Axis3(
-        fig, 
+        fig[1,1], 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
@@ -77,7 +77,7 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time::Integer)
     # setup figure
     fig = Figure()
     ax = Axis(
-        fig, 
+        fig[1,1], 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
