@@ -65,13 +65,13 @@ function TensorAutoregression(
 end
 
 """
-    simulate(model, rng=Xoshiro()) -> model_sim
+    simulate(model; burn=100, rng=Xoshiro()) -> sim
 
 Simulate data from the tensor autoregressive model described by `model` and
 return a new instance with the simulated data, using random number generator
-`rng`.
+`rng` and apply a burn-in period of `burn`.
 """
-function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
+function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractRNG=Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -79,25 +79,36 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
     if coef(model) isa StaticKruskal
         A_sim = similar(coef(model))
         copyto!(A_sim, coef(model))
+        A_burn = A_sim
     else
-        A_sim = simulate(coef(model), rng)
+        (A_sim, A_burn) = simulate(coef(model), burn, rng)
     end
 
     # tensor error distribution
-    ε_sim = simulate(dist(model), rng)
-
-    # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε_sim)]
+    (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
     
     # outer product of Kruskal factors
     U = [factors(A_sim)[i] * factors(A_sim)[i+n]' for i = 1:n]
+
+    # burn-in
+    y_burn = similar(data(model), dims[1:n]..., burn+1)
+    for (t, yt) ∈ pairs(eachslice(y_burn, dims=n+1))
+        # errors
+        yt .= selectdim(resid(ε_burn), n+1, t)
+        if t > 1
+            # autoregressive component
+            for r = 1:rank(A_burn)
+                λ = A_burn isa StaticKruskal ? loadings(A_burn)[r] : loadings(A_burn)[r,t-1]
+                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U, 1:n)
+            end
+        end
+    end
 
     # simulate data
     y_sim = similar(data(model))
     for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
         if t == 1
-            # initial condition
-            yt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
+            yt .= selectdim(y_burn, n+1, burn+1)
         else
             # errors
             yt .= selectdim(resid(ε_sim), n+1, t-1)
@@ -113,7 +124,7 @@ function simulate(model::TensorAutoregression, rng::AbstractRNG=Xoshiro())
 end
 
 """
-    fit!(model, ϵ=1e-4, max_iter=1e3, verbose=false) -> model
+    fit!(model; ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
@@ -126,7 +137,7 @@ maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
 function fit!(
-    model::TensorAutoregression, 
+    model::TensorAutoregression; 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
     verbose::Bool=false
@@ -196,22 +207,30 @@ function forecast(model::TensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods, orth=false) -> Ψ
+    irf(model, periods; α=.05, orth=false) -> irfs
 
-Compute impulse response functions `periods` periods ahead using fitted tensor
-autoregressive model `model`. If `orth` is true, the orthogonalized impulse
-response functions are computed.
+Compute impulse response functions `periods` periods ahead and corresponding
+`α`% upper and lower confidence bounds using fitted tensor autoregressive model
+`model`. Upper and lower confidence bounds are computed using Monte Carlo
+simulation.
+If `orth` is true, the orthogonalized impulse response functions are
+computed.
 """
-function irf(model::TensorAutoregression, periods::Integer, orth::Bool=false)
+function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::Bool=false)
     # moving average representation
     if coef(model) isa StaticKruskal
+        irf_type = StaticIRF
         Ψ = moving_average(coef(model), periods)
     else
+        irf_type = DynamicIRF
         Ψ = moving_average(coef(model), periods, data(model), dist(model))
     end
 
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
-    return Ψ
+    # confidence bounds
+    (lower, upper) = confidence_bounds(model, periods, α, orth)
+
+    return irf_type(Ψ, lower, upper, orth)
 end

@@ -220,3 +220,60 @@ function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
     return dest
 end
 Base.copy(model::TensorAutoregression) = copyto!(similar(model), model)
+
+# Impulse response functions
+"""
+    AbstractIRF
+
+Abstract type for impulse response functions (IRFs).
+"""
+abstract type AbstractIRF end
+
+"""
+    StaticIRF <: AbstractIRF
+
+Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and
+`orth` as whether the IRF is orthogonalized.
+"""
+mutable struct StaticIRF{TΨ<:AbstractArray} <: AbstractIRF
+    Ψ::TΨ
+    lower::TΨ
+    upper::TΨ
+    orth::Bool
+    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray, orth::Bool)
+        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    end
+end
+
+"""
+    DynamicIRF <: AbstractIRF
+
+Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and
+`orth` as whether the IRF is orthogonalized.
+"""
+mutable struct DynamicIRF{TΨ<:AbstractArray} <: AbstractIRF
+    Ψ::TΨ
+    lower::TΨ
+    upper::TΨ
+    orth::Bool
+    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray, orth::Bool)
+        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    end
+end
+
+# methods
+irf(irfs::AbstractIRF) = irfs.Ψ
+irf(irfs::StaticIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :]
+irf(irfs::DynamicIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :, :]
+irf(irfs::DynamicIRF, response, impulse, time) = @view irf(irfs)[response..., impulse..., :, time...]
+lower(irfs::AbstractIRF) = irfs.lower
+lower(irfs::StaticIRF, response, impulse) = @view lower(irfs)[response..., impulse..., :]
+lower(irfs::DynamicIRF, response, impulse) = @view lower(irfs)[response..., impulse..., :, :]
+lower(irfs::DynamicIRF, response, impulse, time) = @view lower(irfs)[response..., impulse..., :, time...]
+upper(irfs::AbstractIRF) = irfs.upper
+upper(irfs::StaticIRF, response, impulse) = @view upper(irfs)[response..., impulse..., :]
+upper(irfs::DynamicIRF, response, impulse) = @view upper(irfs)[response..., impulse..., :, :]
+upper(irfs::DynamicIRF, response, impulse, time) = @view upper(irfs)[response..., impulse..., :, time...]
+orth(irfs::AbstractIRF) = irfs.orth 

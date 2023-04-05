@@ -11,10 +11,14 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox
+using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox, CairoMakie
 
 import LinearAlgebra: rank
 import Statistics: cov
+
+# Makie backend and theme
+CairoMakie.activate!()
+set_theme!(theme_minimal())
 
 export
     # main type + constructor
@@ -36,7 +40,11 @@ export
     forecast,
 
     ## impulse response functions
-    irf
+    irf,
+    lower, upper, orth,
+
+    # plotting
+    irf_plot
 
 include("tensor_algebra.jl")
 include("types.jl")
@@ -44,5 +52,6 @@ include("interface.jl")
 include("utilities.jl")
 include("fit/utilities.jl")
 include("fit/solver.jl")
+include("plotting.jl")
 
 end
