@@ -40,7 +40,8 @@ export
     forecast,
 
     ## impulse response functions
-    irf
+    irf,
+    lower, upper, orth
 
 include("tensor_algebra.jl")
 include("types.jl")

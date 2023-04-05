@@ -264,10 +264,10 @@ mutable struct DynamicIRF{TΨ<:AbstractArray} <: AbstractIRF
 end
 
 # methods
-irf(Ψ::AbstractIRF) = Ψ.Ψ
-irf(Ψ::StaticIRF, response, impulse) = @view irf(Ψ)[response..., impulse..., :]
-irf(Ψ::DynamicIRF, response, impulse) = @view irf(Ψ)[response..., impulse..., :, :]
-irf(Ψ::DynamicIRF, response, impulse, time) = @view irf(Ψ)[response..., impulse..., :, time...]
-lower(Ψ::AbstractIRF) = Ψ.lower
-upper(Ψ::AbstractIRF) = Ψ.upper
-orth(Ψ::AbstractIRF) = Ψ.orth 
+irf(irfs::AbstractIRF) = irfs.Ψ
+irf(irfs::StaticIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :]
+irf(irfs::DynamicIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :, :]
+irf(irfs::DynamicIRF, response, impulse, time) = @view irf(irfs)[response..., impulse..., :, time...]
+lower(irfs::AbstractIRF) = irfs.lower
+upper(irfs::AbstractIRF) = irfs.upper
+orth(irfs::AbstractIRF) = irfs.orth 

@@ -207,7 +207,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods; α=.05, orth=false) -> (Ψ, lower, upper)
+    irf(model, periods; α=.05, orth=false) -> irfs
 
 Compute impulse response functions `periods` periods ahead and corresponding
 `α`% upper and lower confidence bounds using fitted tensor autoregressive model
@@ -219,8 +219,10 @@ computed.
 function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::Bool=false)
     # moving average representation
     if coef(model) isa StaticKruskal
+        irf_type = StaticIRF
         Ψ = moving_average(coef(model), periods)
     else
+        irf_type = DynamicIRF
         Ψ = moving_average(coef(model), periods, data(model), dist(model))
     end
 
@@ -230,5 +232,5 @@ function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::
     # confidence bounds
     (lower, upper) = confidence_bounds(model, periods, α, orth)
 
-    return (Ψ, lower, upper)
+    return irf_type(Ψ, lower, upper, orth)
 end
