@@ -41,7 +41,10 @@ export
 
     ## impulse response functions
     irf,
-    lower, upper, orth
+    lower, upper, orth,
+
+    # plotting
+    irf_plot
 
 include("tensor_algebra.jl")
 include("types.jl")
@@ -49,5 +52,6 @@ include("interface.jl")
 include("utilities.jl")
 include("fit/utilities.jl")
 include("fit/solver.jl")
+include("plotting.jl")
 
 end
