@@ -88,7 +88,7 @@ intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
 Base.similar(A::StaticKruskal) = StaticKruskal(similar(loadings(A)), similar.(factors(A)), rank(A))
-Base.similar(A::DynamicKruskal) = DynamicKruskal(similar(loadings(A)), similar(dynamics(A)), similar(cov(A)), similar.(factors(A)), rank(A))
+Base.similar(A::DynamicKruskal) = DynamicKruskal(similar(loadings(A)), similar(intercept(A)), similar(dynamics(A)), similar(cov(A)), similar.(factors(A)), rank(A))
 function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
     copyto!(loadings(dest), loadings(src))
     copyto!.(factors(dest), factors(src))
@@ -98,6 +98,7 @@ function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
 end
 function Base.copyto!(dest::DynamicKruskal, src::DynamicKruskal)
     copyto!(loadings(dest), loadings(src))
+    copyto!(intercept(dest), intercept(src))
     copyto!(dynamics(dest), dynamics(src))
     copyto!(cov(dest), cov(src))
     copyto!.(factors(dest), factors(src))
