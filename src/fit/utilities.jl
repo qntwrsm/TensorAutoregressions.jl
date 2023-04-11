@@ -55,7 +55,7 @@ function init!(model::TensorAutoregression)
     # factors
     factors(model) .= cp.fmat
     # loadings
-    if isa(coef(model), StaticKruskal)
+    if coef(model) isa StaticKruskal
         loadings(model) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
     else
         xt = similar(x, size(x, 1), rank(model))
@@ -83,14 +83,14 @@ function init!(model::TensorAutoregression)
     for r = 1:rank(model)
         # outer product of Kruskal factors
         U = [factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n]
-        if isa(coef(model), StaticKruskal)
+        if coef(model) isa StaticKruskal
             resid(model) .-= loadings(model)[r] .* tucker(y_lag, U, 1:n)
         else
             resid(model) .-= reshape(loadings(model), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
         end
     end
     # covariance
-    if isa(cov(model), WhiteNoise)
+    if dist(model) isa WhiteNoise
         cov(model).data .= cov(reshape(resid(model), :, 1:last(dims)-1), dims=2)
     else
         scale = one(eltype(resid(model)))
