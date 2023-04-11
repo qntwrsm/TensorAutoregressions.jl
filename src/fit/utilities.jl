@@ -93,8 +93,15 @@ function init!(model::TensorAutoregression)
     if isa(cov(model), WhiteNoise)
         cov(model).data .= cov(reshape(resid(model), :, 1:last(dims)-1), dims=2)
     else
+        scale = one(eltype(resid(model)))
         for k = 1:n
             cov(model)[k].data .= cov(matricize(resid(model), k), dims=2)
+            if k < n
+                scale *= norm(cov(model)[k])
+                lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
+            else
+                lmul!(scale, cov(model)[k].data)
+            end
         end
     end
 
