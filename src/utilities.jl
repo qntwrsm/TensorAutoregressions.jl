@@ -316,7 +316,8 @@ with a burn-in period of `burn` using the random number generator `rng`.
 """
 function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     A_burn = DynamicKruskal(
-        similar(loadings(A), size(loadings(A), 1), burn), 
+        similar(loadings(A), size(loadings(A), 1), burn),
+        intercept(A), 
         dynamics(A), 
         cov(A), 
         factors(A), 
@@ -329,7 +330,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
             # initial condition
             λt .= rand(rng, dist)
         else
-            λt .= dynamics(A_burn) * loadings(A_burn)[:,t-1] + rand(rng, dist)
+            λt .= intercept(A_burn) + dynamics(A_burn) * loadings(A_burn)[:,t-1] + rand(rng, dist)
         end
     end
 
@@ -339,7 +340,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     # simulate
     for (t, λt) ∈ pairs(eachslice(loadings(A_sim), dims=2))
         λt_lag = t == 1 ? loadings(A_burn)[:,end] : loadings(A_sim)[:,t-1]
-        λt .= dynamics(A_sim) * λt_lag + rand(rng, dist)
+        λt .= intercept(A_sim) + dynamics(A_sim) * λt_lag + rand(rng, dist)
     end
 
     return (A_sim, A_burn)
