@@ -159,7 +159,7 @@ function cov(ε::TensorNormal; full::Bool=false)
         for Σi ∈ reverse(cov(ε)[1:end-1])
             Σ = kron(Σ, Σi)
         end
-        
+
         return Σ
     else
         return ε.Σ
@@ -210,7 +210,7 @@ data(model::TensorAutoregression) = model.y
 coef(model::TensorAutoregression) = model.A
 dist(model::TensorAutoregression) = model.ε
 resid(model::TensorAutoregression) = resid(dist(model))
-cov(model::TensorAutoregression; full::Bool=false) = cov(dist(model), full)
+cov(model::TensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
 factors(model::TensorAutoregression) = factors(coef(model))
 loadings(model::TensorAutoregression) = loadings(coef(model))
 rank(model::TensorAutoregression) = rank(coef(model))
