@@ -11,7 +11,14 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Random, Statistics, Distributions, TensorToolbox, CairoMakie
+using 
+    LinearAlgebra,
+    Statistics, 
+    Random, 
+    Distributions, 
+    TensorToolbox, 
+    Optim, 
+    CairoMakie
 
 import LinearAlgebra: rank
 import Statistics: cov
