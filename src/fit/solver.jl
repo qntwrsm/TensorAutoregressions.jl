@@ -140,7 +140,9 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     X = tucker(y_lag, S, 1:n)
 
     # update loading
-    loadings(A)[1] = dot(Z, X) * inv(norm(X)^2)
+    f(x) = dot(Z, Z) - 2 * dot(Z, X) * x + dot(X, X) * x^2 
+    res = optimize(f, -1.0, 1.0)
+    loadings(A)[1] = Optim.minimizer(res)
 
     # update residuals
     resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U, 1:n)
@@ -191,13 +193,17 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     λ̂_lag = @view loadings(A)[1:end-1]
     λ̂_lead = @view loadings(A)[2:end]
     σ̂_lag = @view σ̂[1:end-1]
+    σ̂_lead = @view σ̂[2:end]
 
     # second moments
     φ_lag = σ̂_lag + abs2.(λ̂_lag)
+    φ_lead = σ̂_lead + abs2.(λ̂_lead)
     φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # update dynamics
-    dynamics(A) .= sum(φ_cross) * inv(sum(φ_lag))
+    f(x) = log(I - x^2) + inv(length(λ̂_lag)) * sum(φ_lead - 2 * φ_cross * x + φ_lag * x^2) * inv(I - x^2) 
+    res = optimize(f, 0.0, 1.0)
+    dynamics(A) .= Optim.minimizer(res)
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
     return nothing
@@ -278,8 +284,13 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         # normalize
         k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
 
-        # update scaling
+        # update Cholesky decomposition
         Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+
+        # update precision matrix
+        Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+
+        # update scaling
         S[k] = Cinv[k] * U[k]
     end
 
