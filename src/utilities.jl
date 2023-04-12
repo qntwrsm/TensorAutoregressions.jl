@@ -219,16 +219,17 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 end
 
 """
-    filter(y, Z, T, Q, a1, P1) -> (a, P, v, F, K)
+    filter(y, Z, c, T, Q, a1, P1) -> (a, P, v, F, K)
 
 Collapsed Kalman filter for the dynamic tensor autoregressive model with system
-matrices `Z`, `T`, and `Q` and initial conditions `a1` and `P1`. Returns the
-filtered state `a`, covariance `P`, forecast error `v`, forecast error variance
-`F`, and Kalman gain `K`.
+matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial conditions
+`a1` and `P1`. Returns the filtered state `a`, covariance `P`, forecast error
+`v`, forecast error variance `F`, and Kalman gain `K`.
 """
 function filter(
     y::AbstractVector, 
-    Z::AbstractVector, 
+    Z::AbstractVector,
+    c::AbstractVector, 
     T::AbstractMatrix, 
     Q::AbstractMatrix, 
     a1::AbstractVector, 
@@ -255,7 +256,7 @@ function filter(
 
         # prediction
         if t < length(y)
-            a[t+1] = T * a[t] + K[t] * v[t]
+            a[t+1] = T * a[t] + K[t] * v[t] + c[t]
             P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
         end
     end

@@ -155,7 +155,7 @@ function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # smoother
-    (α̂, V, Γ) = smoother(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    (α̂, V, Γ) = smoother(y_star, Z_star, intercept(A), dynamics(A), cov(A), a1, P1)
     loadings(A) .= hcat(α̂...)
     σ̂ = vec(vcat(V...))
     γ̂ = vec(vcat(Γ...))
