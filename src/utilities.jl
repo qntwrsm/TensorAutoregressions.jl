@@ -256,7 +256,7 @@ function filter(
 
         # prediction
         if t < length(y)
-            a[t+1] = T * a[t] + K[t] * v[t] + c[t]
+            a[t+1] = T * a[t] + K[t] * v[t] + c
             P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
         end
     end
