@@ -201,8 +201,9 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # update dynamics
-    f(x) = log(I - x^2) + inv(length(λ̂_lag)) * sum(φ_lead - 2 * φ_cross * x + φ_lag * x^2) * inv(I - x^2) 
-    res = optimize(f, 0.0, 1.0)
+    intercept(A) .= mean(λ̂_lead - dynamics(A) * λ̂_lag)
+    f(x) = log(I - x^2) + inv(length(λ̂_lag)) * sum(φ_lead + intercept(A)^2 - 2 * intercept(A) * λ̂_lead - 2 * x * λ̂_lag * intercept(A) - 2 * φ_cross * x + φ_lag * x^2) * inv(I - x^2)
+    res = optimize(f, 0.0, 1.0 - intercept(A) * inv(0.7))
     dynamics(A) .= Optim.minimizer(res)
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
