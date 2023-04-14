@@ -51,6 +51,7 @@ export
     lower, upper, orth,
 
     # plotting
+    data_plot,
     irf_plot
 
 include("tensor_algebra.jl")
