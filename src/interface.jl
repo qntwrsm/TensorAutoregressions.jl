@@ -32,6 +32,7 @@ function TensorAutoregression(
     if dynamic
         A = DynamicKruskal(
             similar(y, R, last(dims)-1), 
+            similar(y, R), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
             [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 

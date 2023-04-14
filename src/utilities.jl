@@ -219,16 +219,17 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 end
 
 """
-    filter(y, Z, T, Q, a1, P1) -> (a, P, v, F, K)
+    filter(y, Z, c, T, Q, a1, P1) -> (a, P, v, F, K)
 
 Collapsed Kalman filter for the dynamic tensor autoregressive model with system
-matrices `Z`, `T`, and `Q` and initial conditions `a1` and `P1`. Returns the
-filtered state `a`, covariance `P`, forecast error `v`, forecast error variance
-`F`, and Kalman gain `K`.
+matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial conditions
+`a1` and `P1`. Returns the filtered state `a`, covariance `P`, forecast error
+`v`, forecast error variance `F`, and Kalman gain `K`.
 """
 function filter(
     y::AbstractVector, 
-    Z::AbstractVector, 
+    Z::AbstractVector,
+    c::AbstractVector, 
     T::AbstractMatrix, 
     Q::AbstractMatrix, 
     a1::AbstractVector, 
@@ -255,7 +256,7 @@ function filter(
 
         # prediction
         if t < length(y)
-            a[t+1] = T * a[t] + K[t] * v[t]
+            a[t+1] = T * a[t] + K[t] * v[t] + c
             P[t+1] = T * P[t] * (T - K[t] * Z[t])' + Q
         end
     end
@@ -264,22 +265,24 @@ function filter(
 end
 
 """
-    smoother(y, Z, T, Q, a1, P1) -> (α̂, V, Γ)
+    smoother(y, Z, c, T, Q, a1, P1) -> (α̂, V, Γ)
 
 Collapsed Kalman smoother for the dynamic tensor autoregressive model with
-system matrices `Z`, `T`, and `Q` and initial conditions `a1` and `P1`. Returns
-the smoothed state `α̂`, covariance `V`, and autocovariance `Γ`.
+system matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial
+conditions `a1` and `P1`. Returns the smoothed state `α̂`, covariance `V`, and
+autocovariance `Γ`.
 """
 function smoother(
     y::AbstractVector, 
-    Z::AbstractVector, 
+    Z::AbstractVector,
+    c::AbstractVector, 
     T::AbstractMatrix, 
     Q::AbstractMatrix, 
     a1::AbstractVector, 
     P1::AbstractMatrix,
 )
     # filter
-    (a, P, v, F, K) = filter(y, Z, T, Q, a1, P1)
+    (a, P, v, F, K) = filter(y, Z, c, T, Q, a1, P1)
 
     α̂ = similar(a)
     V = similar(P)
@@ -316,7 +319,8 @@ with a burn-in period of `burn` using the random number generator `rng`.
 """
 function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     A_burn = DynamicKruskal(
-        similar(loadings(A), size(loadings(A), 1), burn), 
+        similar(loadings(A), size(loadings(A), 1), burn),
+        intercept(A), 
         dynamics(A), 
         cov(A), 
         factors(A), 
@@ -329,7 +333,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
             # initial condition
             λt .= rand(rng, dist)
         else
-            λt .= dynamics(A_burn) * loadings(A_burn)[:,t-1] + rand(rng, dist)
+            λt .= intercept(A_burn) + dynamics(A_burn) * loadings(A_burn)[:,t-1] + rand(rng, dist)
         end
     end
 
@@ -339,7 +343,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     # simulate
     for (t, λt) ∈ pairs(eachslice(loadings(A_sim), dims=2))
         λt_lag = t == 1 ? loadings(A_burn)[:,end] : loadings(A_sim)[:,t-1]
-        λt .= dynamics(A_sim) * λt_lag + rand(rng, dist)
+        λt .= intercept(A_sim) + dynamics(A_sim) * λt_lag + rand(rng, dist)
     end
 
     return (A_sim, A_burn)

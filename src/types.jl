@@ -47,28 +47,32 @@ Dynamic Kruskal tensor of rank `R` with dynamic loadings `λ` and factor matrice
 """
 mutable struct DynamicKruskal{
     Tλ<:AbstractMatrix,
+    Tα<:AbstractVector,
     Tϕ<:AbstractMatrix,
     TΣ<:AbstractMatrix,
     TU<:AbstractVector
 } <: AbstractKruskal
     λ::Tλ
+    α::Tα
     ϕ::Tϕ
     Σ::TΣ
     U::TU
     R::Int
     function DynamicKruskal(
-        λ::AbstractMatrix, 
+        λ::AbstractMatrix,
+        α::AbstractVector,
         ϕ::AbstractMatrix, 
         Σ::AbstractMatrix, 
         U::AbstractVector, 
         R::Integer
     )
+        length(α) == R || error("α must be a vector of length R.")
         size(ϕ, 1) == size(ϕ, 2) == R || error("ϕ must be a square matrix of rank R.")
         issymmetric(Σ) && size(Σ, 1) == R || error("Σ must be a symmetric matrix of rank R.")
         length(unique(size.(U, 2))) == 1 || throw(DimensionMismatch("all factor matrices must have the same number of columns."))
         size(λ, 1) == size(U[1], 2) == R || throw(DimensionMismatch("number of loadings and number of columns of factor matrices must equal rank R."))
 
-        return new{typeof(λ), typeof(ϕ), typeof(Σ), typeof(U)}(λ, ϕ, Σ, U, R)
+        return new{typeof(λ), typeof(α), typeof(ϕ), typeof(Σ), typeof(U)}(λ, α, ϕ, Σ, U, R)
     end
 end
 
@@ -80,10 +84,11 @@ Base.size(A::AbstractKruskal) = tuple(size.(factors(A), 1)...)
 Base.size(A::DynamicKruskal) = tuple(size.(factors(A), 1)..., size(loadings(A), 2))
 full(A::AbstractKruskal) = tucker(loadings(A) .* I(length(factors(A)), rank(A)), factors(A))
 full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
+intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
 Base.similar(A::StaticKruskal) = StaticKruskal(similar(loadings(A)), similar.(factors(A)), rank(A))
-Base.similar(A::DynamicKruskal) = DynamicKruskal(similar(loadings(A)), similar(dynamics(A)), similar(cov(A)), similar.(factors(A)), rank(A))
+Base.similar(A::DynamicKruskal) = DynamicKruskal(similar(loadings(A)), similar(intercept(A)), similar(dynamics(A)), similar(cov(A)), similar.(factors(A)), rank(A))
 function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
     copyto!(loadings(dest), loadings(src))
     copyto!.(factors(dest), factors(src))
@@ -93,6 +98,7 @@ function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
 end
 function Base.copyto!(dest::DynamicKruskal, src::DynamicKruskal)
     copyto!(loadings(dest), loadings(src))
+    copyto!(intercept(dest), intercept(src))
     copyto!(dynamics(dest), dynamics(src))
     copyto!(cov(dest), cov(src))
     copyto!.(factors(dest), factors(src))

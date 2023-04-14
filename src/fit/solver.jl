@@ -155,7 +155,7 @@ function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # smoother
-    (α̂, V, Γ) = smoother(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    (α̂, V, Γ) = smoother(y_star, Z_star, intercept(A), dynamics(A), cov(A), a1, P1)
     loadings(A) .= hcat(α̂...)
     σ̂ = vec(vcat(V...))
     γ̂ = vec(vcat(Γ...))
@@ -200,9 +200,21 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     φ_lead = σ̂_lead + abs2.(λ̂_lead)
     φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
+    # objective closures
+    f_intercept(x) = mean(abs2, x) - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
+    function f_dynamics(x)
+        scale = one(x) - x^2
+        α = intercept(A)[1]
+        c = mean(φ_lead) + α^2 - 2 * α * mean(λ̂_lead)
+        f = c + 2 * (α * mean(λ̂_lag) - mean(φ_cross)) * x + mean(φ_lag) * x^2
+
+        return log(scale) + f * inv(scale)
+    end
+
     # update dynamics
-    f(x) = log(I - x^2) + inv(length(λ̂_lag)) * sum(φ_lead - 2 * φ_cross * x + φ_lag * x^2) * inv(I - x^2) 
-    res = optimize(f, 0.0, 1.0)
+    res = optimize(f_intercept, 0.0, 0.7)
+    intercept(A) .= Optim.minimizer(res)
+    res = optimize(f_dynamics, 0.0, 1.0 - intercept(A)[1] * inv(0.7))
     dynamics(A) .= Optim.minimizer(res)
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
