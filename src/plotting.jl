@@ -10,6 +10,46 @@ plotting.jl
 =#
 
 """
+    data_plot(model) -> fig
+
+Plot the time series data.
+"""
+function data_plot(model::TensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # maximum sized mode
+    maxmode = argmax(dims[1:n])
+    m = setdiff(1:n, maxmode)
+
+    # setup subplots
+    cols = iseven(dims[maxmode]) ? 2 : 3
+    rows = ceil(Int, dims[maxmode] / cols)
+    indices = CartesianIndices((rows, cols))
+
+    # setup figure
+    fig = Figure()
+    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices]
+    
+    # link y axes
+    linkyaxes!(axs...)
+
+    # data
+    colors = resample_cmap(:viridis, prod(dims[m]))
+    for (i, ax) ∈ enumerate(axs) 
+        ax.xlabel = "time"
+        series!(
+            ax, 
+            1:last(dims), 
+            reshape(selectdim(data(model), maxmode, i), :, last(dims)), 
+            color=colors
+        )
+    end
+
+    return fig
+end
+
+"""
     irf_plot(irfs, response, impulse[, time]) -> fig
 
 Plot the impulse response function `irfs` for the response `response` to the
