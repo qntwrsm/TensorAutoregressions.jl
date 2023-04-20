@@ -29,7 +29,7 @@ function data_plot(model::TensorAutoregression)
 
     # setup figure
     fig = Figure()
-    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices]
+    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
     
     # link y axes
     linkyaxes!(axs...)
