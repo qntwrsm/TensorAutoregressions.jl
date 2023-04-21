@@ -54,7 +54,7 @@ function loglike(model::TensorAutoregression)
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
         # collapsed component
-        et = selectdim(Z, n+1, t) - y_star[t] .* selectdim(X, n+1, t)
+        et = selectdim(Z, n+1, t) - inv(Z_star[t]) * y_star[t] .* selectdim(X, n+1, t)
         ll -= 0.5 * norm(et)^2
     end
     # projection matrix component
