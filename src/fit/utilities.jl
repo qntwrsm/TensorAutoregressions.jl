@@ -2,12 +2,69 @@
 utilities.jl
 
     Provides a collection of utility tools for fitting tensor autoregressive 
-    models, such as initialization and convergence checks.
+    models, such as initialization, convergence checks, and log-likelihood 
+    evaluation.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
 @date: 2023/23/03
 =#
+
+"""
+    loglike(model) -> ll
+
+Evaluate the log-likelihood of the tensor autoregressive model `model`.
+"""
+function loglike(model::TensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # collapsed state space system
+    (y_star, Z_star, a1, P1) = state_space(data(model), coef(model), dist(model))
+    # filter
+    (_, _, v, F, _) = filter(
+        y_star, 
+        Z_star,
+        intercept(coef(model)),
+        dynamics(coef(model)), 
+        cov(coef(model)), 
+        a1, 
+        P1
+    )
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(model)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
+
+    # outer product of Kruskal factors
+    U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
+
+    # scaling
+    S = [Cinv[i] * U[i] for i = 1:n]
+    
+    # dependent variable and regressor
+    Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv, 1:n)
+    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S, 1:n)
+
+    # log-likelihood
+    # constant
+    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
+    for t = 1:last(dims)-1
+        # filter component
+        ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
+        # collapsed component
+        et = selectdim(Z, n+1, t) - y_star[t] .* selectdim(X, n+1, t)
+        ll -= 0.5 * norm(et)^2
+    end
+    # projection matrix component
+    for k = 1:n
+        m = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+    end
+
+    return ll
+end
 
 """
     init!(model)
