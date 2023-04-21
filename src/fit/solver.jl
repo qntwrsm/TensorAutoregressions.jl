@@ -201,7 +201,7 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # objective closures
-    f_intercept(x) = mean(abs2, x) - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
+    f_intercept(x) = x^2 - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
     function f_dynamics(x)
         scale = one(x) - x^2
         α = intercept(A)[1]
@@ -212,10 +212,10 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     end
 
     # update dynamics
-    res = optimize(f_intercept, 0.0, 0.7)
-    intercept(A) .= Optim.minimizer(res)
-    res = optimize(f_dynamics, 0.0, 1.0 - intercept(A)[1] * inv(0.7))
+    res = optimize(f_dynamics, 0.0, 1.0)
     dynamics(A) .= Optim.minimizer(res)
+    res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
+    intercept(A) .= Optim.minimizer(res)
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
     return nothing
