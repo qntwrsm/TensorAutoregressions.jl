@@ -10,9 +10,9 @@ plotting.jl
 =#
 
 """
-    data_plot(model) -> fig
+    data_plot(model[, labels, time]) -> fig
 
-Plot the time series data.
+Plot the time series data, with optionally specified `labels` and `time` index.
 """
 function data_plot(model::TensorAutoregression)
     dims = size(data(model))
@@ -44,6 +44,61 @@ function data_plot(model::TensorAutoregression)
             reshape(selectdim(data(model), maxmode, i), :, last(dims)), 
             color=colors
         )
+    end
+
+    return fig
+end
+
+function data_plot(model::TensorAutoregression, labels, time)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # maximum sized mode
+    maxmode = argmax(dims[1:n])
+    m = setdiff(1:n, maxmode)
+
+    # combine time series labels
+    sub_labels = labels[m[1]]
+    for mode ∈ m[2:end]
+        sub_labels = vec(sub_labels .* " - " .* reshape(labels[mode], 1, :))
+    end
+
+    # time ticks
+    values = string.(unique(year.(time))[1:5:end])
+    ticks = [findfirst(string.(year.(time)) .== value) for value ∈ values]
+
+    # setup subplots
+    cols = iseven(dims[maxmode]) ? 2 : 3
+    rows = ceil(Int, dims[maxmode] / cols)
+    indices = CartesianIndices((rows, cols))
+
+    # setup figure
+    fig = Figure(resolution=(rows*800,rows*600))
+    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    
+    # link y axes
+    linkyaxes!(axs...)
+
+    # data
+    colors = resample_cmap(:viridis, prod(dims[m]))
+    for (i, ax) ∈ enumerate(axs) 
+        ax.xlabel = "time"
+        ax.xticks = (ticks, values)
+        ax.title = labels[maxmode][i]
+        series!(
+            ax, 
+            1:last(dims), 
+            reshape(selectdim(data(model), maxmode, i), :, last(dims)), 
+            color=colors,
+            labels=sub_labels
+        )
+    end
+
+    # add legend
+    if dims[maxmode] == length(labels)
+        Legend(fig[:, end+1], axs[1])
+    else
+        Legend(fig[rows, cols], axs[1], tellwidth=false, halign=:left)
     end
 
     return fig
