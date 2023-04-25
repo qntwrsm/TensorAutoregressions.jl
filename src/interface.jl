@@ -125,11 +125,12 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
 end
 
 """
-    fit!(model; ϵ=1e-4, max_iter=1e3, verbose=false) -> model
+    fit!(model; fixed=NamedTuple(), ϵ=1e-4, max_iter=1e3, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
-a summary of the model fitting is printed.
+a summary of the model fitting is printed. `fixed` indicates which parameters
+are fixed during fitting.
 
 Estimation is done using the Expectation-Maximization algorithm for
 obtaining the maximum likelihood estimates of the dynamic model and the
@@ -138,12 +139,25 @@ maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
 function fit!(
-    model::TensorAutoregression; 
+    model::TensorAutoregression;
+    fixed::NamedTuple=NamedTuple(), 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
     verbose::Bool=false
 )
     rank(model) == 1 || error("general rank R model fitting not implemented.")
+
+    # model summary
+    if verbose
+        println("Tensor autoregressive model")
+        println("===========================")
+        println("Dimensions: $(size(data(model))[1:end-1])")
+        println("Number of observations: $(size(data(model))[end])")
+        println("Rank: $(rank(model))")
+        println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
+        println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
+        println("===========================")
+    end
     
     # initialization of model parameters
     init!(model)
