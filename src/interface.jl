@@ -170,13 +170,13 @@ function fit!(
 
     # optimization summary
     if verbose
-        println("Tensor autoregression model")
-        println("===========================")
+        println("Optimization summary")
+        println("====================")
         println("Convergence: ", δ < ϵ ? "success" : "failed")
         println("Maximum absolute change $δ")
         println("Iterations: $iter")
         println("Log-likelihood: $(loglike(model))")
-        println("===========================")
+        println("====================")
     end
 
     return model
