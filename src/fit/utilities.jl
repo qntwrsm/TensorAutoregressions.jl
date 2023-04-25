@@ -82,18 +82,10 @@ matrix a mode specific sample covariance is calculated.
 """
 function init!(model::TensorAutoregression, fixed::NamedTuple)
     # initialize Kruskal coefficient tensor
-    if haskey(fixed, :coef)
-        init!(coef(model), data(model), fixed.coef)
-    else
-        init!(coef(model), data(model), NamedTuple())
-    end
+    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()))
 
     # initialize tensor error distribution
-    if haskey(fixed, :dist)
-        init!(dist(model), data(model), coef(model), fixed.dist)
-    else
-        init!(dist(model), data(model), coef(model), NamedTuple())
-    end
+    init!(dist(model), data(model), coef(model), get(fixed, :dist, NamedTuple()))
 
     return nothing
 end
@@ -140,7 +132,11 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
     # CP decomposition
     cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
     # factors
-    factors(A) .= cp.fmat
+    if haskey(fixed, :factors)
+        factors(A) .= fixed.factors
+    else
+        factors(A) .= cp.fmat
+    end
     # loadings
     if A isa StaticKruskal
         if haskey(fixed, :loadings)
