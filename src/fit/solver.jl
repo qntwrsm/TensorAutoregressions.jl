@@ -11,14 +11,19 @@ solver.jl
 =#
 
 """
-    update!(A, ε, y)
+    update!(A, ε, y, fixed)
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
-tensor autoregressive model based on data `y`.
+tensor autoregressive model based on data `y`, with fixed parameters indicated
+by `fixed`.
 """
-function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
+function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
+
+    # extract fixed parameters
+    fixed_coef = get(fixed, :coef, NamedTuple())
+    fixed_factors = get(fixed_coef, :factors, [NamedTuple() for _ = 1:2*n])
 
     # outer product of Kruskal factors
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
@@ -42,14 +47,18 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
         M = Yk * Xk'
 
         # update factor k
-        update_factor!(
-            factors(A)[k], 
-            factors(A)[k+n], 
-            M, 
-            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
-        )
+        if isempty(fixed_factors[k])
+            update_factor!(
+                factors(A)[k], 
+                factors(A)[k+n], 
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+            )
+        end
         # update factor k+n
-        update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
+        if isempty(fixed_factors[k+n])
+            update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
+        end
 
         # update outer product of Kruskal factors
         U[k] = factors(A)[k] * factors(A)[k+n]'
@@ -59,7 +68,9 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     X = tucker(y_lag, U, 1:n)
 
     # update loading
-    loadings(A)[1] = dot(y_lead, X) * inv(norm(X)^2)
+    if !haskey(fixed_coef, :loadings)
+        loadings(A)[1] = dot(y_lead, X) * inv(norm(X)^2)
+    end
 
     # update residuals
     resid(ε) .= y_lead .- loadings(A)[1] .* X
@@ -71,9 +82,15 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     return nothing
 end
 
-function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
+function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
+
+    # extract fixed parameters
+    fixed_coef = get(fixed, :coef, NamedTuple())
+    fixed_factors = get(fixed_coef, :factors, [NamedTuple() for _ = 1:2*n])
+    fixed_dist = get(fixed, :dist, NamedTuple())
+    fixed_cov = get(fixed_dist, :cov, [NamedTuple() for _ = 1:n])
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(ε)))
@@ -107,28 +124,34 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
         M = Zk * Xk'
 
         # update factor k
-        update_factor!(
-            factors(A)[k], 
-            factors(A)[k+n], 
-            M, 
-            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
-        )
+        if isempty(fixed_factors[k])
+            update_factor!(
+                factors(A)[k], 
+                factors(A)[k+n], 
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+            )
+        end
         # update factor k+n
-        update_factor!(
-            factors(A)[k+n], 
-            factors(A)[k], 
-            G \ M' * Ω[k], 
-            inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
-        )
+        if isempty(fixed_factors[k+n])
+            update_factor!(
+                factors(A)[k+n], 
+                factors(A)[k], 
+                G \ M' * Ω[k], 
+                inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
+            )
+        end
 
         # update outer product of Kruskal factors
         U[k] = factors(A)[k] * factors(A)[k+n]'
 
         # update covariance
-        Ek = Zk - loadings(A)[1] .* U[k] * Xk
-        mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        # normalize
-        k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        if isempty(fixed_cov[k])
+            Ek = Zk - loadings(A)[1] .* U[k] * Xk
+            mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+            # normalize
+            k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        end
     
         # update scaling
         Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
@@ -140,9 +163,11 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     X = tucker(y_lag, S, 1:n)
 
     # update loading
-    f(x) = dot(Z, Z) - 2 * dot(Z, X) * x + dot(X, X) * x^2 
-    res = optimize(f, -1.0, 1.0)
-    loadings(A)[1] = Optim.minimizer(res)
+    if !haskey(fixed_coef, :loadings)
+        f(x) = dot(Z, Z) - 2 * dot(Z, X) * x + dot(X, X) * x^2 
+        res = optimize(f, -1.0, 1.0)
+        loadings(A)[1] = Optim.minimizer(res)
+    end
 
     # update residuals
     resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U, 1:n)
