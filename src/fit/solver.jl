@@ -115,12 +115,12 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
         X = tucker(y_lag, S[m], m)
         Xk = matricize(X, k)
 
-        # Gram matrix
-        G = Xk * Xk'
-        # moment matrix
-        M = Zk * Xk'
-
         if !haskey(fixed_coef, :factors)
+            # Gram matrix
+            G = Xk * Xk'
+            # moment matrix
+            M = Zk * Xk'
+
             # update factor k
             update_factor!(
                 factors(A)[k], 
@@ -135,21 +135,26 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
                 G \ M' * Ω[k], 
                 inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
             )
+
+            # update outer product of Kruskal factors
+            U[k] = factors(A)[k] * factors(A)[k+n]'
         end
 
-        # update outer product of Kruskal factors
-        U[k] = factors(A)[k] * factors(A)[k+n]'
-
-        # update covariance
         if !haskey(fixed_dist, :cov)
+            # update covariance
             Ek = Zk - loadings(A)[1] .* U[k] * Xk
             mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
             # normalize
             k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+
+            # update Cholesky decomposition
+            Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+
+            # update precision matrix
+            Ω[k] = transpose(Cinv)[k] .* Cinv[k]
         end
     
         # update scaling
-        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
         S[k] = Cinv[k] * U[k]
     end
 
