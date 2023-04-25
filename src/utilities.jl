@@ -148,7 +148,15 @@ function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, pe
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # filter
-    (a, P, v, _, K) = filter(y_star, Z_star, dynamics(A), cov(A), a1, P1)
+    (a, P, v, _, K) = filter(
+        y_star, 
+        Z_star, 
+        intercept(A), 
+        dynamics(A), 
+        cov(A), 
+        a1, 
+        P1
+    )
     # predict
     â = dynamics(A) * a[end] + K[end] * v[end]
     P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
