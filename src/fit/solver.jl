@@ -11,14 +11,18 @@ solver.jl
 =#
 
 """
-    update!(A, ε, y)
+    update!(A, ε, y, fixed)
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
-tensor autoregressive model based on data `y`.
+tensor autoregressive model based on data `y`, with fixed parameters indicated
+by `fixed`.
 """
-function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
+function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
+
+    # extract fixed parameters
+    fixed_coef = get(fixed, :coef, NamedTuple())
 
     # outer product of Kruskal factors
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
@@ -27,39 +31,45 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     y_lead = selectdim(y, n+1, 2:last(dims))
     y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
-    # loop through modes
-    for k = 1:n
-        m = setdiff(1:n, k)
-        # matricize dependent variable along k-th mode
-        Yk = matricize(y_lead, k)
-        # matricize regressor along k-th mode
-        X = tucker(y_lag, U[m], m)
-        Xk = matricize(X, k)
+    if !haskey(fixed_coef, :factors)
+        # loop through modes
+        for k = 1:n
+            m = setdiff(1:n, k)
+            # matricize dependent variable along k-th mode
+            Yk = matricize(y_lead, k)
+            # matricize regressor along k-th mode
+            X = tucker(y_lag, U[m], m)
+            Xk = matricize(X, k)
 
-        # Gram matrix
-        G = Xk * Xk'
-        # moment matrix
-        M = Yk * Xk'
+            # Gram matrix
+            G = Xk * Xk'
+            # moment matrix
+            M = Yk * Xk'
 
-        # update factor k
-        update_factor!(
-            factors(A)[k], 
-            factors(A)[k+n], 
-            M, 
-            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
-        )
-        # update factor k+n
-        update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
+            # update factor k
+            update_factor!(
+                factors(A)[k], 
+                factors(A)[k+n], 
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+            )
+            # update factor k+n
+            update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
 
-        # update outer product of Kruskal factors
-        U[k] = factors(A)[k] * factors(A)[k+n]'
+            # update outer product of Kruskal factors
+            U[k] = factors(A)[k] * factors(A)[k+n]'
+        end
     end
 
     # regressor tensor
     X = tucker(y_lag, U, 1:n)
 
     # update loading
-    loadings(A)[1] = dot(y_lead, X) * inv(norm(X)^2)
+    if !haskey(fixed_coef, :loadings)
+        f(x) = norm(y_lead)^2 - 2 * dot(y_lead, X) * x + norm(X)^2 * x^2 
+        res = optimize(f, -1.0, 1.0)
+        loadings(A)[1] = Optim.minimizer(res)
+    end
 
     # update residuals
     resid(ε) .= y_lead .- loadings(A)[1] .* X
@@ -71,9 +81,13 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     return nothing
 end
 
-function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
+function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
+
+    # extract fixed parameters
+    fixed_coef = get(fixed, :coef, NamedTuple())
+    fixed_dist = get(fixed, :dist, NamedTuple())
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(ε)))
@@ -101,37 +115,46 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
         X = tucker(y_lag, S[m], m)
         Xk = matricize(X, k)
 
-        # Gram matrix
-        G = Xk * Xk'
-        # moment matrix
-        M = Zk * Xk'
+        if !haskey(fixed_coef, :factors)
+            # Gram matrix
+            G = Xk * Xk'
+            # moment matrix
+            M = Zk * Xk'
 
-        # update factor k
-        update_factor!(
-            factors(A)[k], 
-            factors(A)[k+n], 
-            M, 
-            inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
-        )
-        # update factor k+n
-        update_factor!(
-            factors(A)[k+n], 
-            factors(A)[k], 
-            G \ M' * Ω[k], 
-            inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
-        )
+            # update factor k
+            update_factor!(
+                factors(A)[k], 
+                factors(A)[k+n], 
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+            )
+            # update factor k+n
+            update_factor!(
+                factors(A)[k+n], 
+                factors(A)[k], 
+                G \ M' * Ω[k], 
+                inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
+            )
 
-        # update outer product of Kruskal factors
-        U[k] = factors(A)[k] * factors(A)[k+n]'
+            # update outer product of Kruskal factors
+            U[k] = factors(A)[k] * factors(A)[k+n]'
+        end
 
-        # update covariance
-        Ek = Zk - loadings(A)[1] .* U[k] * Xk
-        mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        # normalize
-        k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        if !haskey(fixed_dist, :cov)
+            # update covariance
+            Ek = Zk - loadings(A)[1] .* U[k] * Xk
+            mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+            # normalize
+            k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+
+            # update Cholesky decomposition
+            Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+
+            # update precision matrix
+            Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+        end
     
         # update scaling
-        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
         S[k] = Cinv[k] * U[k]
     end
 
@@ -140,9 +163,11 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     X = tucker(y_lag, S, 1:n)
 
     # update loading
-    f(x) = dot(Z, Z) - 2 * dot(Z, X) * x + dot(X, X) * x^2 
-    res = optimize(f, -1.0, 1.0)
-    loadings(A)[1] = Optim.minimizer(res)
+    if !haskey(fixed_coef, :loadings)
+        f(x) = norm(Z)^2 - 2 * dot(Z, X) * x + norm(X)^2 * x^2 
+        res = optimize(f, -1.0, 1.0)
+        loadings(A)[1] = Optim.minimizer(res)
+    end
 
     # update residuals
     resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U, 1:n)
@@ -150,7 +175,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     return nothing
 end
 
-function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
+function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
     # E-step
     # collapsed state space system
     (y_star, Z_star, a1, P1) = state_space(y, A, ε)
@@ -161,8 +186,8 @@ function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray)
     γ̂ = vec(vcat(Γ...))
 
     # M-step
-    update_dynamic!(A, σ̂, γ̂)
-    update_static!(A, ε, y, σ̂)
+    update_dynamic!(A, σ̂, γ̂, get(fixed, :coef, NamedTuple()))
+    update_static!(A, ε, y, σ̂, fixed)
 
     return nothing
 end
@@ -183,12 +208,18 @@ function update_factor!(u::AbstractVecOrMat, w::AbstractVecOrMat, P::AbstractMat
 end
 
 """
-    update_dynamic!(A, σ̂, γ̂)
+    update_dynamic!(A, σ̂, γ̂, fixed)
 
 Update dynamics of dynamic Kruskal coefficient tensor `A` using smoothed
-loadings variance `σ̂`, and autocovariance `γ̂`.
+loadings variance `σ̂`, and autocovariance `γ̂`, with fixed parameters indicated
+by `fixed`.
 """
-function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::AbstractVector)
+function update_dynamic!(
+    A::DynamicKruskal, 
+    σ̂::AbstractVector, 
+    γ̂::AbstractVector,
+    fixed::NamedTuple
+)
     # lags and leads
     λ̂_lag = @view loadings(A)[1:end-1]
     λ̂_lead = @view loadings(A)[2:end]
@@ -212,24 +243,39 @@ function update_dynamic!(A::DynamicKruskal, σ̂::AbstractVector, γ̂::Abstract
     end
 
     # update dynamics
-    res = optimize(f_dynamics, 0.0, 1.0)
-    dynamics(A) .= Optim.minimizer(res)
-    res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
-    intercept(A) .= Optim.minimizer(res)
+    if !haskey(fixed, :dynamics)
+        res = optimize(f_dynamics, 0.0, 1.0)
+        dynamics(A) .= Optim.minimizer(res)
+    end
+    if !haskey(fixed, :intercept)
+        res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
+        intercept(A) .= Optim.minimizer(res)
+    end
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
     return nothing
 end
 
 """
-    update_static!(A, ε, y. σ̂)
+    update_static!(A, ε, y. σ̂, fixed)
 
 Update static factors of dynamic Kruskal coefficient tensor `A` and tensor error
-distribution `ε` based on data `y` and smoothed loading variance `σ̂`.
+distribution `ε` based on data `y` and smoothed loading variance `σ̂`, with
+fixed parameters indicated by `fixed`.
 """
-function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, σ̂::AbstractVector)
+function update_static!(
+    A::DynamicKruskal, 
+    ε::TensorNormal, 
+    y::AbstractArray, 
+    σ̂::AbstractVector,
+    fixed::NamedTuple
+)
     dims = size(y)
     n = ndims(y) - 1
+
+    # extract fixed parameters
+    fixed_coef = get(fixed, :coef, NamedTuple())
+    fixed_dist = get(fixed, :dist, NamedTuple())
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(ε)))
@@ -265,42 +311,46 @@ function update_static!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, �
         λ̂_ext = repeat(vec(loadings(A)), inner=prod(dims[m]))
         φ_ext = repeat(φ, inner=prod(dims[m]))
 
-        # Gram matrix
-        G = φ_ext' .* Xk * Xk'
-        # moment matrix
-        M = λ̂_ext' .* Zk * Xk'
+        if !haskey(fixed_coef, :factors)
+            # Gram matrix
+            G = φ_ext' .* Xk * Xk'
+            # moment matrix
+            M = λ̂_ext' .* Zk * Xk'
 
-        # update factor k
-        update_factor!(
-            factors(A)[k], 
-            factors(A)[k+n], 
-            M, 
-            inv(dot(factors(A)[k+n], G, factors(A)[k+n]))
-        )
-        # update factor k+n
-        update_factor!(
-            factors(A)[k+n], 
-            factors(A)[k], 
-            G \ M' * Ω[k], 
-            inv(dot(factors(A)[k], Ω[k], factors(A)[k]))
-        )
+            # update factor k
+            update_factor!(
+                factors(A)[k], 
+                factors(A)[k+n], 
+                M, 
+                inv(dot(factors(A)[k+n], G, factors(A)[k+n]))
+            )
+            # update factor k+n
+            update_factor!(
+                factors(A)[k+n], 
+                factors(A)[k], 
+                G \ M' * Ω[k], 
+                inv(dot(factors(A)[k], Ω[k], factors(A)[k]))
+            )
 
-        # update outer product of Kruskal factors
-        U[k] = factors(A)[k] * factors(A)[k+n]'
+            # update outer product of Kruskal factors
+            U[k] = factors(A)[k] * factors(A)[k+n]'
+        end
 
-        # update covariance
-        μk = U[k] * Xk
-        Ek = Zk - λ̂_ext' .* μk
-        mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-        cov(ε)[k].data .+= inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk'
-        # normalize
-        k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        if !haskey(fixed_dist, :cov)
+            # update covariance
+            μk = U[k] * Xk
+            Ek = Zk - λ̂_ext' .* μk
+            mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+            cov(ε)[k].data .+= inv((last(dims) - 1) * prod(dims[m])) .* σ̂_ext' .* μk * μk'
+            # normalize
+            k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
 
-        # update Cholesky decomposition
-        Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+            # update Cholesky decomposition
+            Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
 
-        # update precision matrix
-        Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+            # update precision matrix
+            Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+        end
 
         # update scaling
         S[k] = Cinv[k] * U[k]
