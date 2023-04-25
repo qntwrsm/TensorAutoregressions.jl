@@ -156,12 +156,15 @@ function fit!(
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
+        println("Fixed parameters:")
+        println("   Kruskal tensor: ", haskey(fixed, :coef) ? keys(fixed.coef) : "none")
+        println("   Distribution: ", haskey(fixed, :dist) ? keys(fixed.dist) : "none")
         println("===========================")
         println()
     end
     
     # initialization of model parameters
-    init!(model)
+    init!(model, fixed)
 
     # instantiate model
     model_prev = copy(model)

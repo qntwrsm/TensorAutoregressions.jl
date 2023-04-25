@@ -67,9 +67,10 @@ function loglike(model::TensorAutoregression)
 end
 
 """
-    init!(model)
+    init!(model, fixed)
 
-Initialize the tensor autoregressive model `model`.
+Initialize the tensor autoregressive model `model`, excluding the fixed
+parameters indicated by `fixed`.
 
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic
@@ -79,13 +80,42 @@ Initiliazation of the tensor error distribution is based on the sample
 covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
 """
-function init!(model::TensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+function init!(model::TensorAutoregression, fixed::NamedTuple)
+    # initialize Kruskal coefficient tensor
+    if haskey(fixed, :coef)
+        init!(coef(model), data(model), fixed.coef)
+    else
+        init!(coef(model), data(model), NamedTuple())
+    end
+
+    # initialize tensor error distribution
+    if haskey(fixed, :dist)
+        init!(dist(model), data(model), coef(model), fixed.dist)
+    else
+        init!(dist(model), data(model), coef(model), NamedTuple())
+    end
+
+    return nothing
+end
+
+"""
+    init!(A, y, fixed)
+
+Initialize the Kruskal coefficient tensor `A` given the data `y`, excluding the
+fixed parameters indicated by `fixed`.
+
+Initialization of the Kruskal coefficient tensor is based on ridge regression of
+the vectorized model combined with a CP decomposition. In case of a dynamic
+Kruskal tensor the dynamic paramaters are obtained from the factor model
+representation of the model.
+"""
+function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
+    dims = size(y)
+    n = ndims(y) - 1
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n+1, 2:last(dims))
-    y_lag = selectdim(data(model), n+1, 1:last(dims)-1)
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
     # dependent variable and regressor
     z = reshape(y_lead, :, last(dims)-1)
@@ -108,62 +138,100 @@ function init!(model::TensorAutoregression)
     β_star = β[argmin(bic)]
 
     # CP decomposition
-    cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(model))
+    cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
     # factors
-    factors(model) .= cp.fmat
+    factors(A) .= cp.fmat
     # loadings
-    if coef(model) isa StaticKruskal
-        loadings(model) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+    if A isa StaticKruskal
+        if haskey(fixed, :loadings)
+            loadings(A) .= fixed.loadings
+        else
+            loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+        end
     else
-        xt = similar(x, size(x, 1), rank(model))
+        xt = similar(x, size(x, 1), rank(A))
         for t = 1:last(dims)-1
             # select time series
-            yt = selectdim(data(model), n+1, t)
+            yt = selectdim(y, n+1, t)
             # regressors
-            for r = 1:rank(model)
+            for r = 1:rank(A)
                 # outer product of Kruskal factors
-                U = [factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n]
+                U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
                 xt[:,r] = vec(tucker(yt, U, 1:n))
             end
-            loadings(model)[:,t] = xt \ z[:,t]
+            loadings(A)[:,t] = xt \ z[:,t]
         end
 
         # dynamics
-        λ_lead = @view loadings(model)[:,2:end]
-        λ_lag = @view loadings(model)[:,1:end-1]
+        λ_lead = @view loadings(A)[:,2:end]
+        λ_lag = @view loadings(A)[:,1:end-1]
         β = λ_lead / vcat(ones(1,last(dims)-2), λ_lag)
-        intercept(coef(model)) .= β[1]
-        dynamics(coef(model)) .= β[2]
-        cov(coef(model)).data .= I - dynamics(coef(model)) * dynamics(coef(model))'
+        intercept(A) .= haskey(fixed, :intercept) ? fixed.intercept : β[1]
+        dynamics(A) .= haskey(fixed, :dynamics) ? fixed.dynamics : β[2]
+        cov(A).data .= I - dynamics(A) * dynamics(A)'
     end
-    
+
+    return nothing
+end
+
+"""
+    init!(ε, y, A, fixed)
+
+Initialize the tensor error distribution `ε` given the data `y` and the Kruskal
+coefficent tensor `A`, excluding the fixed parameters indicated by `fixed`.
+
+Initiliazation of the tensor error distribution is based on the sample
+covariance estimate of the residuals. In case of separability of the covariance
+matrix a mode specific sample covariance is calculated.
+"""
+function init!(
+    ε::AbstractTensorErrorDistribution, 
+    y::AbstractArray, 
+    A::AbstractKruskal, 
+    fixed::NamedTuple
+)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # lag and lead variables
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+
     # error distribution
-    resid(model) .= y_lead
-    for r = 1:rank(model)
+    resid(ε) .= y_lead
+    for r = 1:rank(A)
         # outer product of Kruskal factors
-        U = [factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n]
-        if coef(model) isa StaticKruskal
-            resid(model) .-= loadings(model)[r] .* tucker(y_lag, U, 1:n)
+        U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
+        if A isa StaticKruskal
+            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U, 1:n)
         else
-            resid(model) .-= reshape(loadings(model), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
+            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
         end
     end
     # covariance
-    if dist(model) isa WhiteNoise
-        cov(model).data .= cov(reshape(resid(model), :, 1:last(dims)-1), dims=2)
+    if ε isa WhiteNoise
+        if haskey(fixed, :cov)
+            cov(ε) .= fixed.cov
+        else
+            cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+        end
     else
-        scale = one(eltype(resid(model)))
+        scale = one(eltype(resid(ε)))
         for k = 1:n
-            cov(model)[k].data .= cov(matricize(resid(model), k), dims=2)
-            if k < n
-                scale *= norm(cov(model)[k])
-                lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
+            if haskey(fixed, :cov)
+                cov(ε)[k] .= fixed.cov[k]
             else
-                lmul!(scale, cov(model)[k].data)
+                cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+            end
+            if k < n
+                scale *= norm(cov(ε)[k])
+                lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+            else
+                lmul!(scale, cov(ε)[k].data)
             end
         end
     end
-
+    
     return nothing
 end
 
