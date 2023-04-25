@@ -23,7 +23,6 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
 
     # extract fixed parameters
     fixed_coef = get(fixed, :coef, NamedTuple())
-    fixed_factors = get(fixed_coef, :factors, [NamedTuple() for _ = 1:2*n])
 
     # outer product of Kruskal factors
     U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
@@ -46,17 +45,15 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
         # moment matrix
         M = Yk * Xk'
 
-        # update factor k
-        if isempty(fixed_factors[k])
+        if !haskey(fixed_coef, :factors)
+            # update factor k
             update_factor!(
                 factors(A)[k], 
                 factors(A)[k+n], 
                 M, 
                 inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
             )
-        end
-        # update factor k+n
-        if isempty(fixed_factors[k+n])
+            # update factor k+n
             update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
         end
 
@@ -88,9 +85,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
 
     # extract fixed parameters
     fixed_coef = get(fixed, :coef, NamedTuple())
-    fixed_factors = get(fixed_coef, :factors, [NamedTuple() for _ = 1:2*n])
     fixed_dist = get(fixed, :dist, NamedTuple())
-    fixed_cov = get(fixed_dist, :cov, [NamedTuple() for _ = 1:n])
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(ε)))
@@ -123,17 +118,15 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
         # moment matrix
         M = Zk * Xk'
 
-        # update factor k
-        if isempty(fixed_factors[k])
+        if !haskey(fixed_coef, :factors)
+            # update factor k
             update_factor!(
                 factors(A)[k], 
                 factors(A)[k+n], 
                 M, 
                 inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
             )
-        end
-        # update factor k+n
-        if isempty(fixed_factors[k+n])
+            # update factor k+n
             update_factor!(
                 factors(A)[k+n], 
                 factors(A)[k], 
@@ -146,7 +139,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
         U[k] = factors(A)[k] * factors(A)[k+n]'
 
         # update covariance
-        if isempty(fixed_cov[k])
+        if !haskey(fixed_dist, :cov)
             Ek = Zk - loadings(A)[1] .* U[k] * Xk
             mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
             # normalize
