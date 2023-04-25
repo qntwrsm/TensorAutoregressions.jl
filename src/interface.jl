@@ -157,6 +157,7 @@ function fit!(
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
         println("===========================")
+        println()
     end
     
     # initialization of model parameters
