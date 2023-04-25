@@ -31,21 +31,21 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
     y_lead = selectdim(y, n+1, 2:last(dims))
     y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
-    # loop through modes
-    for k = 1:n
-        m = setdiff(1:n, k)
-        # matricize dependent variable along k-th mode
-        Yk = matricize(y_lead, k)
-        # matricize regressor along k-th mode
-        X = tucker(y_lag, U[m], m)
-        Xk = matricize(X, k)
+    if !haskey(fixed_coef, :factors)
+        # loop through modes
+        for k = 1:n
+            m = setdiff(1:n, k)
+            # matricize dependent variable along k-th mode
+            Yk = matricize(y_lead, k)
+            # matricize regressor along k-th mode
+            X = tucker(y_lag, U[m], m)
+            Xk = matricize(X, k)
 
-        # Gram matrix
-        G = Xk * Xk'
-        # moment matrix
-        M = Yk * Xk'
+            # Gram matrix
+            G = Xk * Xk'
+            # moment matrix
+            M = Yk * Xk'
 
-        if !haskey(fixed_coef, :factors)
             # update factor k
             update_factor!(
                 factors(A)[k], 
@@ -55,10 +55,10 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
             )
             # update factor k+n
             update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
-        end
 
-        # update outer product of Kruskal factors
-        U[k] = factors(A)[k] * factors(A)[k+n]'
+            # update outer product of Kruskal factors
+            U[k] = factors(A)[k] * factors(A)[k+n]'
+        end
     end
 
     # regressor tensor
