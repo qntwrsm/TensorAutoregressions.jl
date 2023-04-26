@@ -73,7 +73,7 @@ function data_plot(model::TensorAutoregression, labels, time)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
-    fig = Figure(resolution=(rows*800,rows*600))
+    fig = Figure(resolution=(cols*800,cols*600))
     axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
     
     # link y axes
@@ -95,8 +95,8 @@ function data_plot(model::TensorAutoregression, labels, time)
     end
 
     # add legend
-    if dims[maxmode] == length(labels)
-        Legend(fig[:, end+1], axs[1])
+    if dims[maxmode] == length(indices)
+        Legend(fig[:, cols+1], axs[1])
     else
         Legend(fig[rows, cols], axs[1], tellwidth=false, halign=:left)
     end
