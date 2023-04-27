@@ -15,6 +15,7 @@ TensorToolbox = "9c690861-8ade-587a-897e-15364bc6f718"
 
 [compat]
 Optim = "1"
+TensorToolbox = "1"
 julia = "1.8"
 
 [extras]
