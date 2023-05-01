@@ -145,6 +145,7 @@ function irf_plot(irfs::DynamicIRF, response, impulse)
     fig = Figure()
     ax = Axis3(
         fig[1,1], 
+        azimuth = π/4, 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
@@ -167,6 +168,7 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time)
     fig = Figure()
     ax = Axis3(
         fig[1,1], 
+        azimuth = π/4, 
         title=orth(irfs) ? "Orthogonal Impulse Response Function" : "Impulse Response Function",
         titlealign=:left,
         titlecolor=:gray50,
