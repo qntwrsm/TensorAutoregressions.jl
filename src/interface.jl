@@ -125,12 +125,20 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
 end
 
 """
-    fit!(model; fixed=NamedTuple(), ϵ=1e-4, max_iter=1e3, verbose=false) -> model
+    fit!(
+        model; 
+        fixed=NamedTuple(), 
+        init_method=(coef=:data, dist=:data), 
+        ϵ=1e-4, 
+        max_iter=1000, 
+        verbose=false
+    ) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
 a summary of the model fitting is printed. `fixed` indicates which parameters
-are fixed during fitting.
+are fixed during fitting. `init_method` indicates which method is used for
+initialization of the parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for
 obtaining the maximum likelihood estimates of the dynamic model and the
@@ -140,12 +148,14 @@ and tensor normal errors.
 """
 function fit!(
     model::TensorAutoregression;
-    fixed::NamedTuple=NamedTuple(), 
+    fixed::NamedTuple=NamedTuple(),
+    init_method::NamedTuple=(coef=:data, dist=:data), 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
     verbose::Bool=false
 )
     rank(model) == 1 || error("general rank R model fitting not implemented.")
+    keys(init_method) ⊇ (:coef, :dist) || error("init_method must be a NamedTuple with keys :coef and :dist.")
 
     # model summary
     if verbose
@@ -164,7 +174,7 @@ function fit!(
     end
     
     # initialization of model parameters
-    init!(model, fixed)
+    init!(model, fixed, init_method)
 
     # instantiate model
     model_prev = copy(model)

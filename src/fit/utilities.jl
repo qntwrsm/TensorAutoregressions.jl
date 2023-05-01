@@ -67,41 +67,61 @@ function loglike(model::TensorAutoregression)
 end
 
 """
-    init!(model, fixed)
+    init!(model, fixed, method)
 
-Initialize the tensor autoregressive model `model`, excluding the fixed
-parameters indicated by `fixed`.
+Initialize the tensor autoregressive model `model` by `method`, excluding the
+fixed parameters indicated by `fixed`.
 
-Initialization of the Kruskal coefficient tensor is based on ridge regression of
+When `method` is set to `:data`: 
+- Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic
 Kruskal tensor the dynamic paramaters are obtained from the factor model
 representation of the model.
-Initiliazation of the tensor error distribution is based on the sample
+- Initiliazation of the tensor error distribution is based on the sample
 covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
+
+When `method` is set to `:random`:
+- Initialization of the Kruskal coefficient tensor is based on a randomly sampled
+CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
+obtained from the factor model representation of the model.
+- Initiliazation of the tensor error distribution is based on a randomly sampled
+covariance matrix from an inverse Wishart distribution.
 """
-function init!(model::TensorAutoregression, fixed::NamedTuple)
+function init!(model::TensorAutoregression, fixed::NamedTuple, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()))
+    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()), method.coef)
 
     # initialize tensor error distribution
-    init!(dist(model), data(model), coef(model), get(fixed, :dist, NamedTuple()))
+    init!(
+        dist(model), 
+        data(model), 
+        coef(model), 
+        get(fixed, :dist, NamedTuple()), 
+        method.dist
+    )
 
     return nothing
 end
 
 """
-    init!(A, y, fixed)
+    init!(A, y, fixed, method)
 
-Initialize the Kruskal coefficient tensor `A` given the data `y`, excluding the
-fixed parameters indicated by `fixed`.
+Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`,
+excluding the fixed parameters indicated by `fixed`.
 
+When `method` is set to `:data`: 
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
-the vectorized model combined with a CP decomposition. In case of a dynamic
-Kruskal tensor the dynamic paramaters are obtained from the factor model
-representation of the model.
+the vectorized model combined with a CP decomposition. 
+
+When `method` is set to `:random`:
+Initialization of the Kruskal coefficient tensor is based on a randomly sampled
+CP decomposition.
+
+In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the
+factor model representation of the model.
 """
-function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
+function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::Symbol)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -113,36 +133,53 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
     z = reshape(y_lead, :, last(dims)-1)
     x = reshape(y_lag, :, last(dims)-1)
 
-    # ridge regression
-    F = hessenberg(x * x')
-    M = z * x'
-    # gridsearch
-    γ = exp10.(range(0, 4, length=100))
-    β = similar(γ, typeof(M))
-    bic = similar(γ)
-    for (i, γi) ∈ pairs(γ)
-        β[i] = M / (F + γi * I)
-        rss = norm(z - β[i] * x)^2
-        df = tr(x' / (F + γi * I) * x)
-        bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + df * log(last(dims) - 1)
-    end
-    # optimal
-    β_star = β[argmin(bic)]
+    if method == :data
+        # ridge regression
+        F = hessenberg(x * x')
+        M = z * x'
+        # gridsearch
+        γ = exp10.(range(0, 4, length=100))
+        β = similar(γ, typeof(M))
+        bic = similar(γ)
+        for (i, γi) ∈ pairs(γ)
+            β[i] = M / (F + γi * I)
+            rss = norm(z - β[i] * x)^2
+            df = tr(x' / (F + γi * I) * x)
+            bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + df * log(last(dims) - 1)
+        end
+        # optimal
+        β_star = β[argmin(bic)]
 
-    # CP decomposition
-    cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+        # CP decomposition
+        cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+    end
     # factors
     if haskey(fixed, :factors)
         factors(A) .= fixed.factors
     else
-        factors(A) .= cp.fmat
+        if method == :data
+            factors(A) .= cp.fmat
+        elseif method == :random
+            for k = 1:n
+                for r = 1:rank(A)
+                    factors(A)[k][:,r] .= randn(dims[k])
+                    factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
+                    factors(A)[k+n][:,r] .= randn(dims[k])
+                    factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
+                end
+            end
+        end
     end
     # loadings
     if A isa StaticKruskal
         if haskey(fixed, :loadings)
             loadings(A) .= fixed.loadings
         else
-            loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+            if method == :data
+                loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+            elseif method == :random
+                loadings(A) .= rand(rank(A))
+            end
         end
     else
         xt = similar(x, size(x, 1), rank(A))
@@ -171,20 +208,28 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
 end
 
 """
-    init!(ε, y, A, fixed)
+    init!(ε, y, A, fixed, method)
 
 Initialize the tensor error distribution `ε` given the data `y` and the Kruskal
-coefficent tensor `A`, excluding the fixed parameters indicated by `fixed`.
+coefficent tensor `A` using `method`, excluding the fixed parameters indicated
+by `fixed`.
 
+When `method` is set to `:data`:
 Initiliazation of the tensor error distribution is based on the sample
 covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
+
+When `method` is set to `:random`:
+Initialization of the tensor error distribution is based on a randomly sampled
+covariance matrix from an inverse Wishart distribution.
+
 """
 function init!(
     ε::AbstractTensorErrorDistribution, 
     y::AbstractArray, 
     A::AbstractKruskal, 
-    fixed::NamedTuple
+    fixed::NamedTuple,
+    method::Symbol
 )
     dims = size(y)
     n = ndims(y) - 1
@@ -209,7 +254,12 @@ function init!(
         if haskey(fixed, :cov)
             cov(ε) .= fixed.cov
         else
-            cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+            if method == :data
+                cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+            elseif method == :random
+                p = prod(dims[1:n])
+                cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
+            end
         end
     else
         scale = one(eltype(resid(ε)))
@@ -217,7 +267,11 @@ function init!(
             if haskey(fixed, :cov)
                 cov(ε)[k] .= fixed.cov[k]
             else
-                cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+                if method == :data
+                    cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+                elseif method == :random
+                    cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
+                end
             end
             if k < n
                 scale *= norm(cov(ε)[k])
