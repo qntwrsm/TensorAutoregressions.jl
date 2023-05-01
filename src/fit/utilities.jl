@@ -86,7 +86,7 @@ When `method` is set to `:random`:
 CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
 obtained from the factor model representation of the model.
 - Initiliazation of the tensor error distribution is based on a randomly sampled
-covariance matrix from a Wishart distribution.
+covariance matrix from an inverse Wishart distribution.
 """
 function init!(model::TensorAutoregression, fixed::NamedTuple, method::NamedTuple)
     # initialize Kruskal coefficient tensor
@@ -208,20 +208,28 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
 end
 
 """
-    init!(ε, y, A, fixed)
+    init!(ε, y, A, fixed, method)
 
 Initialize the tensor error distribution `ε` given the data `y` and the Kruskal
-coefficent tensor `A`, excluding the fixed parameters indicated by `fixed`.
+coefficent tensor `A` using `method`, excluding the fixed parameters indicated
+by `fixed`.
 
+When `method` is set to `:data`:
 Initiliazation of the tensor error distribution is based on the sample
 covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
+
+When `method` is set to `:random`:
+Initialization of the tensor error distribution is based on a randomly sampled
+covariance matrix from an inverse Wishart distribution.
+
 """
 function init!(
     ε::AbstractTensorErrorDistribution, 
     y::AbstractArray, 
     A::AbstractKruskal, 
-    fixed::NamedTuple
+    fixed::NamedTuple,
+    method::Symbol
 )
     dims = size(y)
     n = ndims(y) - 1
@@ -246,7 +254,12 @@ function init!(
         if haskey(fixed, :cov)
             cov(ε) .= fixed.cov
         else
-            cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+            if method == :data
+                cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+            elseif method == :random
+                p = prod(dims[1:n])
+                cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
+            end
         end
     else
         scale = one(eltype(resid(ε)))
@@ -254,7 +267,11 @@ function init!(
             if haskey(fixed, :cov)
                 cov(ε)[k] .= fixed.cov[k]
             else
-                cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+                if method == :data
+                    cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+                elseif method == :random
+                    cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
+                end
             end
             if k < n
                 scale *= norm(cov(ε)[k])
