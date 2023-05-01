@@ -67,25 +67,41 @@ function loglike(model::TensorAutoregression)
 end
 
 """
-    init!(model, fixed)
+    init!(model, fixed, method)
 
-Initialize the tensor autoregressive model `model`, excluding the fixed
-parameters indicated by `fixed`.
+Initialize the tensor autoregressive model `model` by `method`, excluding the
+fixed parameters indicated by `fixed`.
 
-Initialization of the Kruskal coefficient tensor is based on ridge regression of
+When `method` is set to `:data`: 
+
+- Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic
 Kruskal tensor the dynamic paramaters are obtained from the factor model
 representation of the model.
-Initiliazation of the tensor error distribution is based on the sample
+- Initiliazation of the tensor error distribution is based on the sample
 covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
+
+When `method` is set to `:random`:
+
+- Initialization of the Kruskal coefficient tensor is based on a randomly sampled
+CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
+obtained from the factor model representation of the model.
+- Initiliazation of the tensor error distribution is based on a randomly sampled
+covariance matrix from a Wishart distribution.
 """
-function init!(model::TensorAutoregression, fixed::NamedTuple)
+function init!(model::TensorAutoregression, fixed::NamedTuple, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()))
+    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()), method.coef)
 
     # initialize tensor error distribution
-    init!(dist(model), data(model), coef(model), get(fixed, :dist, NamedTuple()))
+    init!(
+        dist(model), 
+        data(model), 
+        coef(model), 
+        get(fixed, :dist, NamedTuple()), 
+        method.dist
+    )
 
     return nothing
 end
@@ -93,8 +109,8 @@ end
 """
     init!(A, y, fixed)
 
-Initialize the Kruskal coefficient tensor `A` given the data `y`, excluding the
-fixed parameters indicated by `fixed`.
+Initialize the Kruskal coefficient tensor `A` given the data `y`,
+excluding the fixed parameters indicated by `fixed`.
 
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic

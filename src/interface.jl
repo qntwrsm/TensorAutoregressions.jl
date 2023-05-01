@@ -125,7 +125,14 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
 end
 
 """
-    fit!(model; fixed=NamedTuple(), init_method=NamedTuple(), ϵ=1e-4, max_iter=1000, verbose=false) -> model
+    fit!(
+        model; 
+        fixed=NamedTuple(), 
+        init_method=(coef=:data, dist=:data), 
+        ϵ=1e-4, 
+        max_iter=1000, 
+        verbose=false
+    ) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
@@ -142,12 +149,13 @@ and tensor normal errors.
 function fit!(
     model::TensorAutoregression;
     fixed::NamedTuple=NamedTuple(),
-    init_method::NamedTuple=NamedTuple(), 
+    init_method::NamedTuple=(coef=:data, dist=:data), 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
     verbose::Bool=false
 )
     rank(model) == 1 || error("general rank R model fitting not implemented.")
+    keys(init_method) ⊇ (:coef, :dist) || error("init_method must be a NamedTuple with keys :coef and :dist.")
 
     # model summary
     if verbose
