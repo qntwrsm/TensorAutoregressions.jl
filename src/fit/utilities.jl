@@ -73,7 +73,6 @@ Initialize the tensor autoregressive model `model` by `method`, excluding the
 fixed parameters indicated by `fixed`.
 
 When `method` is set to `:data`: 
-
 - Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic
 Kruskal tensor the dynamic paramaters are obtained from the factor model
@@ -83,7 +82,6 @@ covariance estimate of the residuals. In case of separability of the covariance
 matrix a mode specific sample covariance is calculated.
 
 When `method` is set to `:random`:
-
 - Initialization of the Kruskal coefficient tensor is based on a randomly sampled
 CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
 obtained from the factor model representation of the model.
@@ -107,17 +105,23 @@ function init!(model::TensorAutoregression, fixed::NamedTuple, method::NamedTupl
 end
 
 """
-    init!(A, y, fixed)
+    init!(A, y, fixed, method)
 
-Initialize the Kruskal coefficient tensor `A` given the data `y`,
+Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`,
 excluding the fixed parameters indicated by `fixed`.
 
+When `method` is set to `:data`: 
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
-the vectorized model combined with a CP decomposition. In case of a dynamic
-Kruskal tensor the dynamic paramaters are obtained from the factor model
-representation of the model.
+the vectorized model combined with a CP decomposition. 
+
+When `method` is set to `:random`:
+Initialization of the Kruskal coefficient tensor is based on a randomly sampled
+CP decomposition.
+
+In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the
+factor model representation of the model.
 """
-function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
+function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::Symbol)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -129,36 +133,53 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple)
     z = reshape(y_lead, :, last(dims)-1)
     x = reshape(y_lag, :, last(dims)-1)
 
-    # ridge regression
-    F = hessenberg(x * x')
-    M = z * x'
-    # gridsearch
-    γ = exp10.(range(0, 4, length=100))
-    β = similar(γ, typeof(M))
-    bic = similar(γ)
-    for (i, γi) ∈ pairs(γ)
-        β[i] = M / (F + γi * I)
-        rss = norm(z - β[i] * x)^2
-        df = tr(x' / (F + γi * I) * x)
-        bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + df * log(last(dims) - 1)
-    end
-    # optimal
-    β_star = β[argmin(bic)]
+    if method == :data
+        # ridge regression
+        F = hessenberg(x * x')
+        M = z * x'
+        # gridsearch
+        γ = exp10.(range(0, 4, length=100))
+        β = similar(γ, typeof(M))
+        bic = similar(γ)
+        for (i, γi) ∈ pairs(γ)
+            β[i] = M / (F + γi * I)
+            rss = norm(z - β[i] * x)^2
+            df = tr(x' / (F + γi * I) * x)
+            bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) + df * log(last(dims) - 1)
+        end
+        # optimal
+        β_star = β[argmin(bic)]
 
-    # CP decomposition
-    cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+        # CP decomposition
+        cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+    end
     # factors
     if haskey(fixed, :factors)
         factors(A) .= fixed.factors
     else
-        factors(A) .= cp.fmat
+        if method == :data
+            factors(A) .= cp.fmat
+        elseif method == :random
+            for k = 1:n
+                for r = 1:rank(A)
+                    factors(A)[k][:,r] .= randn(dims[k])
+                    factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
+                    factors(A)[k+n][:,r] .= randn(dims[k])
+                    factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
+                end
+            end
+        end
     end
     # loadings
     if A isa StaticKruskal
         if haskey(fixed, :loadings)
             loadings(A) .= fixed.loadings
         else
-            loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+            if method == :data
+                loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+            elseif method == :random
+                loadings(A) .= rand(rank(A))
+            end
         end
     else
         xt = similar(x, size(x, 1), rank(A))
