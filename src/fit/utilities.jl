@@ -13,39 +13,85 @@ utilities.jl
 """
     loglike(model) -> ll
 
-Evaluate the log-likelihood of the tensor autoregressive model `model`.
+Wrapper for evaluate log-likelihood of the tensor autoregressive model `model`.
 """
-function loglike(model::TensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+loglike(model::TensorAutoregression) = loglike(data(model), coef(model), dist(model))
 
-    # collapsed state space system
-    (y_star, Z_star, a1, P1) = state_space(data(model), coef(model), dist(model))
-    # filter
-    (_, _, v, F, _) = filter(
-        y_star, 
-        Z_star,
-        intercept(coef(model)),
-        dynamics(coef(model)), 
-        cov(coef(model)), 
-        a1, 
-        P1
-    )
+"""
+    loglike(y, A, ε) -> ll
+
+Evaluate log-likelihood of the tensor autoregressive model with Kruskal
+coefficient tensor `A` and tensor error distribution `ε` for the tensor
+autoregressive model given data `y`.
+"""
+loglike(y::AbstractArray, A::StaticKruskal, ε::WhiteNoise) = error("Log-likelihood not available for white noise error distribution.")
+
+function loglike(y::AbstractArray, A::StaticKruskal, ε::TensorNormal)
+    dims = size(y)
+    n = ndims(y) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(model)))
+    C = cholesky.(Hermitian.(cov(ε)))
     # inverse of Cholesky decompositions
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(model)[i] * factors(model)[i+n]' for i = 1:n]
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv, 1:n)
-    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S, 1:n)
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+
+    # log-likelihood
+    # constant
+    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
+    # log determinant component
+    for k = 1:n
+        m = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+    end
+    for t = 1:last(dims)-1
+        et = selectdim(Z, n+1, t) - loadings(A) .* selectdim(X, n+1, t)
+        ll -= 0.5 * norm(et)^2
+    end
+
+    return ll
+end
+
+function loglike(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # collapsed state space system
+    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
+    # filter
+    (_, _, v, F, _) = filter(
+        y_star, 
+        Z_star,
+        intercept(A),
+        dynamics(A), 
+        cov(A), 
+        a1, 
+        P1
+    )
+
+    # Cholesky decompositions of Σᵢ
+    C = cholesky.(Hermitian.(cov(ε)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
+
+    # outer product of Kruskal factors
+    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+
+    # scaling
+    S = [Cinv[i] * U[i] for i = 1:n]
+    
+    # dependent variable and regressor
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
 
     # log-likelihood
     # constant
