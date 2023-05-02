@@ -162,21 +162,32 @@ function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, pe
     P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
 
     # sample particles
-    particles = particle_sampler(â, P̂, dynamics(A), cov(A), periods, 1000, Xoshiro())
+    particles = particle_sampler(
+        â, 
+        P̂, 
+        intercept(A), 
+        dynamics(A), 
+        cov(A), 
+        periods, 
+        1000, 
+        Xoshiro()
+    )
 
     return particles
 end
 
 """
-    particle_sampler(a, P, T, Q, periods, samples, rng) -> particles
+    particle_sampler(a, P, c, T, Q, periods, samples, rng) -> particles
 
 Forward particle sampler of the filtered state `a` with corresponding variance
-`P` and state equation system matrices `T` and `Q` with the number of forward
-periods given by `periods`, using random number generator `rng`.
+`P`, state equation system matrices `T` and `Q`, and state mean adjustment `c`
+with the number of forward periods given by `periods`, using random number
+generator `rng`.
 """
 function particle_sampler(
     a::AbstractVector, 
     P::AbstractMatrix, 
+    c::AbstractVector, 
     T::AbstractMatrix, 
     Q::AbstractMatrix, 
     periods::Integer,
@@ -186,7 +197,7 @@ function particle_sampler(
     particles = similar(a, length(a), samples, periods)
     particles[:,:,1] = rand(rng, MvNormal(a, P), samples)
     for h = 2:periods, s = 1:samples
-        particles[:,s,h] = rand(rng, MvNormal(T * particles[:,s,h-1], Q))
+        particles[:,s,h] = rand(rng, MvNormal(c + T * particles[:,s,h-1], Q))
     end
 
     return particles
