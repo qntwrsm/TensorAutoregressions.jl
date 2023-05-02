@@ -158,7 +158,7 @@ function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, pe
         P1
     )
     # predict
-    â = dynamics(A) * a[end] + K[end] * v[end]
+    â = dynamics(A) * a[end] + K[end] * v[end] + intercept(A)
     P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
 
     # sample particles
