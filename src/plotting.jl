@@ -20,7 +20,10 @@ function data_plot(model::TensorAutoregression)
 
     # maximum sized mode
     maxmode = argmax(dims[1:n])
-    m = setdiff(1:n, maxmode)
+    # m = setdiff(1:n, maxmode)
+    p = sortperm(collect(dims[1:n]), rev=true)
+    maxmode = p[1]
+    m = setdiff(1:n, p[1:2])
 
     # setup subplots
     cols = iseven(dims[maxmode]) ? 2 : 3
@@ -29,19 +32,35 @@ function data_plot(model::TensorAutoregression)
 
     # setup figure
     fig = Figure()
-    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
-    
-    # link y axes
-    linkyaxes!(axs...)
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    axs = [Axis(grid[k, 1]) for grid ∈ grids, k = 1:dims[p[2]]]
+
+    # layout
+    for grid ∈ grids
+        colgap!(grid, 0)
+        rowgap!(grid, 0)
+    end
+
+    # link axes
+    linkxaxes!(axs...)
+    for k = 1:dims[p[2]]
+        linkyaxes!(axs[:,k]...)
+    end
+
+    # decorations
+    for i = 1:dims[maxmode]
+        axs[i,end].xlabel = "time"
+    end
+    hidexdecorations!.(axs[:,1:end-1])
 
     # data
     colors = resample_cmap(:viridis, prod(dims[m]))
-    for (i, ax) ∈ enumerate(axs) 
-        ax.xlabel = "time"
+    for (idx, ax) ∈ pairs(IndexCartesian(), axs)
+        y = selectdim(data(model), maxmode, idx[1])
         series!(
             ax, 
             1:last(dims), 
-            reshape(selectdim(data(model), maxmode, i), :, last(dims)), 
+            reshape(selectdim(y, p[2], idx[2]), :, last(dims)), 
             color=colors
         )
     end
