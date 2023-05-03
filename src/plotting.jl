@@ -18,21 +18,18 @@ function data_plot(model::TensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # maximum sized mode
-    maxmode = argmax(dims[1:n])
-    # m = setdiff(1:n, maxmode)
+    # sort modes
     p = sortperm(collect(dims[1:n]), rev=true)
-    maxmode = p[1]
     m = setdiff(1:n, p[1:2])
 
     # setup subplots
-    cols = iseven(dims[maxmode]) ? 2 : 3
-    rows = ceil(Int, dims[maxmode] / cols)
+    cols = iseven(dims[p[1]]) ? 2 : 3
+    rows = ceil(Int, dims[p[1]] / cols)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
     fig = Figure()
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[p[1]]]]
     axs = [Axis(grid[k, 1]) for grid ∈ grids, k = 1:dims[p[2]]]
 
     # layout
@@ -56,7 +53,7 @@ function data_plot(model::TensorAutoregression)
     # data
     colors = resample_cmap(:viridis, prod(dims[m]))
     for (idx, ax) ∈ pairs(IndexCartesian(), axs)
-        y = selectdim(data(model), maxmode, idx[1])
+        y = selectdim(data(model), p[1], idx[1])
         series!(
             ax, 
             1:last(dims), 
