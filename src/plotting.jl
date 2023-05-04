@@ -125,7 +125,7 @@ function data_plot(model::TensorAutoregression, labels, time)
     end
     # axis titles
     for grid ∈ grids[end-rows+1:end]
-        for (i, label) in pairs(labels[end])
+        for (i, label) ∈ pairs(labels[end])
             Box(grid[i, 2], color=:gray90)
             Label(grid[i, 2], label, rotation=π/2, tellheight=false)
         end
