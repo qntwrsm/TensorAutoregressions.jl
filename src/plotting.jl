@@ -45,7 +45,7 @@ function data_plot(model::TensorAutoregression)
     end
 
     # decorations
-    for i = 1:dims[maxmode]
+    for i = 1:dims[p[1]]
         axs[i,end].xlabel = "time"
     end
     hidexdecorations!.(axs[:,1:end-1])
@@ -69,9 +69,9 @@ function data_plot(model::TensorAutoregression, labels, time)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # maximum sized mode
-    maxmode = argmax(dims[1:n])
-    m = setdiff(1:n, maxmode)
+    # sort modes
+    maxmode = argmax(dims[1:n-1])
+    m = setdiff(1:n-1, maxmode)
 
     # combine time series labels
     sub_labels = labels[m[1]]
@@ -89,22 +89,55 @@ function data_plot(model::TensorAutoregression, labels, time)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
-    fig = Figure(resolution=(cols*800,cols*600))
-    axs = [Axis(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    fig = Figure(resolution=(cols * 800, cols * 600))
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    axs = [Axis(grid[i, 1]) for grid ∈ grids, i = 1:dims[n]]
     
-    # link y axes
-    linkyaxes!(axs...)
+    # layout
+    for grid ∈ grids
+        colgap!(grid, 0)
+        rowgap!(grid, 0)
+    end
+
+    # link axes
+    linkxaxes!(axs...)
+    for i = 1:dims[n]
+        linkyaxes!(axs[:,i]...)
+    end
+
+    # decorations
+    for i = 1:dims[maxmode]
+        axs[i,end].xlabel = "time"
+        axs[i,end].xticks = (ticks, values)
+    end
+    hidexdecorations!.(axs[:,1:end-1], grid=false)
+    hideydecorations!.(axs[rows+1:end,:], grid=false)
+
+    # grid titles
+    for (i, grid) ∈ pairs(grids)
+        Label(
+            grid[1, :, Top()], 
+            labels[maxmode][i], 
+            valign=:bottom,
+            font=:bold
+        )
+    end
+    # axis titles
+    for grid ∈ grids[end-rows+1:end]
+        for (i, label) in pairs(labels[end])
+            Box(grid[i, 2], color=:gray90)
+            Label(grid[i, 2], label, rotation=π/2, tellheight=false)
+        end
+        colgap!(grid, 0)
+    end
 
     # data
     colors = resample_cmap(:viridis, prod(dims[m]))
-    for (i, ax) ∈ enumerate(axs) 
-        ax.xlabel = "time"
-        ax.xticks = (ticks, values)
-        ax.title = labels[maxmode][i]
+    for (idx, ax) ∈ pairs(IndexCartesian(), axs)
+        y = selectdim(data(model), maxmode, idx[1])
         series!(
-            ax, 
-            1:last(dims), 
-            reshape(selectdim(data(model), maxmode, i), :, last(dims)), 
+            ax,
+            reshape(selectdim(y, n-1, idx[2]), :, last(dims)), 
             color=colors,
             labels=sub_labels
         )
@@ -112,9 +145,15 @@ function data_plot(model::TensorAutoregression, labels, time)
 
     # add legend
     if dims[maxmode] == length(indices)
-        Legend(fig[:, cols+1], axs[1])
+        Legend(fig[:, cols+1], axs[1], "sectors")
     else
-        Legend(fig[rows, cols], axs[1], tellwidth=false, halign=:left)
+        Legend(
+            fig[rows, cols], 
+            axs[1], 
+            "sectors", 
+            tellwidth=false, 
+            halign=:left,       
+        )
     end
 
     return fig
