@@ -19,19 +19,19 @@ function data_plot(model::TensorAutoregression)
     n = ndims(data(model)) - 1
 
     # sort modes
-    p = sortperm(collect(dims[1:n]), rev=true)
-    m = setdiff(1:n, p[1:2])
+    maxmode = argmax(dims[1:n-1])
+    m = setdiff(1:n-1, maxmode)
 
     # setup subplots
-    cols = iseven(dims[p[1]]) ? 2 : 3
-    rows = ceil(Int, dims[p[1]] / cols)
+    cols = iseven(dims[maxmode]) ? 2 : 3
+    rows = ceil(Int, dims[maxmode] / cols)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
-    fig = Figure()
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[p[1]]]]
-    axs = [Axis(grid[k, 1]) for grid ∈ grids, k = 1:dims[p[2]]]
-
+    fig = Figure(resolution=(cols * 800, cols * 600))
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx ∈ indices[1:dims[maxmode]]]
+    axs = [Axis(grid[i, 1]) for grid ∈ grids, i = 1:dims[n]]
+    
     # layout
     for grid ∈ grids
         colgap!(grid, 0)
@@ -40,24 +40,25 @@ function data_plot(model::TensorAutoregression)
 
     # link axes
     linkxaxes!(axs...)
-    for k = 1:dims[p[2]]
-        linkyaxes!(axs[:,k]...)
+    for i = 1:dims[n]
+        linkyaxes!(axs[:,i]...)
     end
 
     # decorations
-    for i = 1:dims[p[1]]
+    for i = 1:dims[maxmode]
         axs[i,end].xlabel = "time"
+        axs[i,end].xticks = (ticks, values)
     end
-    hidexdecorations!.(axs[:,1:end-1])
+    hidexdecorations!.(axs[:,1:end-1], grid=false)
+    hideydecorations!.(axs[rows+1:end,:], grid=false)
 
     # data
     colors = resample_cmap(:viridis, prod(dims[m]))
     for (idx, ax) ∈ pairs(IndexCartesian(), axs)
-        y = selectdim(data(model), p[1], idx[1])
+        y = selectdim(data(model), maxmode, idx[1])
         series!(
-            ax, 
-            1:last(dims), 
-            reshape(selectdim(y, p[2], idx[2]), :, last(dims)), 
+            ax,
+            reshape(selectdim(y, n-1, idx[2]), :, last(dims)), 
             color=colors
         )
     end
