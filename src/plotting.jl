@@ -163,6 +163,32 @@ function data_plot(model::TensorAutoregression, labels, time)
 end
 
 """
+    kruskal_plot(A[; labels, time]) -> figs
+
+Plot factors and loadings of the Kruskal coefficient tensor `A` with optionally
+specified `labels` and `time`.
+"""
+function kruskal_plot(A::AbstractKruskal)
+    dims = size(A)
+    n = length(dims) ÷ 2
+
+    # setup figures
+    figs = A isa DynamicKruskal ? [Figure(), Figure()] : [Figure()]
+    axs = [Axis(fig[1, 1]) for fig ∈ figs]
+
+    # Kruskal coefficient tensor factors (and static loadings)
+    hm = heatmap!(axs[1], matricize(full(A), 1:n))
+    Colorbar(figs[1][1, 2], hm)
+
+    # dynamic Kruskal loadings
+    if A isa DynamicKruskal
+        series!(axs[2], loadings(A), color=:viridis)
+    end
+
+    return figs
+end
+
+"""
     irf_plot(irfs, response, impulse[, time]) -> fig
 
 Plot the impulse response function `irfs` for the response `response` to the

@@ -53,6 +53,7 @@ export
 
     # plotting
     data_plot,
+    kruskal_plot,
     irf_plot
 
 include("tensor_algebra.jl")
