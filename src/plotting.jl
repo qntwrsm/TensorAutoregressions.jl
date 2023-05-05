@@ -173,11 +173,11 @@ function kruskal_plot(A::StaticKruskal)
     n = length(dims) ÷ 2
 
     # setup figure
-    fig = Figure()
+    fig = Figure(resolution=(1600, 1600))
     ax = Axis(fig[1, 1])
 
     # Kruskal coefficient tensor factors and static loadings
-    hm = heatmap!(ax, matricize(full(A), 1:n))
+    hm = heatmap!(ax, matricize(full(A), 1:n)')
     Colorbar(fig[1, 2], hm)
 
     return fig
@@ -208,8 +208,8 @@ function kruskal_plot(A::StaticKruskal, labels)
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    ax.xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])));
-    ax.yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])));
+    ax.xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    ax.yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
 
     return fig
 end
@@ -219,11 +219,11 @@ function kruskal_plot(A::DynamicKruskal)
     n = length(dims) ÷ 2
 
     # setup figures
-    figs = [Figure(), Figure()]
+    figs = [Figure(resolution=(1600, 1600)), Figure()]
     axs = [Axis(fig[1, 1]) for fig ∈ figs]
 
     # Kruskal coefficient tensor factors
-    hm = heatmap!(axs[1], matricize(full(A), 1:n))
+    hm = heatmap!(axs[1], matricize(full(A), 1:n)')
     Colorbar(figs[1][1, 2], hm)
 
     # dynamic Kruskal loadings
@@ -257,8 +257,8 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    axs[1].xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])));
-    axs[1].yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])));
+    axs[1].xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    axs[1].yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
 
     # dynamic Kruskal loadings
     series!(axs[2], loadings(A), color=:viridis)
@@ -270,6 +270,55 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     axs[2].xticks = (ticks, values)
 
     return figs
+end
+
+"""
+    cov_plot(ε[, labels]) -> fig
+
+Plot the tensor error covariance structure `ε` with optionally specified
+`labels`.
+"""
+function cov_plot(ε::AbstractTensorErrorDistribution)
+    # setup figure
+    fig = Figure(resolution=(1600, 1600))
+    ax = Axis(fig[1, 1])
+
+    # covariance matrix
+    hm = heatmap!(ax, cov(ε, full=true)')
+    Colorbar(fig[1, 2], hm)
+
+    return fig
+end
+
+function cov_plot(ε::AbstractTensorErrorDistribution, labels)
+    dims = size.(cov(ε), 1)
+    n = length(dims)
+
+    # setup figures
+    fig = Figure(resolution=(1600, 1600))
+    # main grids
+    gl = GridLayout(fig[1, 1])  # left label grid
+    gb = GridLayout(fig[2, 2])  # bottom label grid
+    gm = GridLayout(fig[1, 2])  # main plotting grid
+    gc = GridLayout(fig[1, 3])  # colorbar grid
+    # plotting axis
+    ax = Axis(gm[1, 1])
+
+    # label grids
+    for i = 1:dims[n]
+        nested_labels!(GridLayout(gl[i, 1]), dims, n, i, labels, :left)
+        nested_labels!(GridLayout(gb[1, i]), dims, n, i, labels, :bottom)
+    end
+
+    # covariance matrix
+    hm = heatmap!(ax, cov(ε, full=true)')
+    Colorbar(gc[1, 1], hm)
+
+    # ticks
+    ax.xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    ax.yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+
+    return fig
 end
 
 """
