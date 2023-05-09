@@ -195,7 +195,7 @@ function particle_sampler(
     rng::AbstractRNG
 )
     particles = similar(a, length(a), samples, periods)
-    particles[:,:,1] = rand(rng, MvNormal(a, P), samples)
+    particles[:,:,1] = rand(rng, MvNormal(c + T * a, T * P * T' + Q), samples)
     for h = 2:periods, s = 1:samples
         particles[:,s,h] = rand(rng, MvNormal(c + T * particles[:,s,h-1], Q))
     end
