@@ -113,10 +113,10 @@ function loglike(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
 end
 
 """
-    init!(model, fixed, method)
+    init!(model, method)
 
 Initialize the tensor autoregressive model `model` by `method`, excluding the
-fixed parameters indicated by `fixed`.
+fixed parameters indicated.
 
 When `method` is set to `:data`: 
 - Initialization of the Kruskal coefficient tensor is based on ridge regression of
@@ -134,16 +134,16 @@ obtained from the factor model representation of the model.
 - Initiliazation of the tensor error distribution is based on a randomly sampled
 covariance matrix from an inverse Wishart distribution.
 """
-function init!(model::TensorAutoregression, fixed::NamedTuple, method::NamedTuple)
+function init!(model::TensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    init!(coef(model), data(model), get(fixed, :coef, NamedTuple()), method.coef)
+    init!(coef(model), data(model), get(fixed(model), :coef, NamedTuple()), method.coef)
 
     # initialize tensor error distribution
     init!(
         dist(model), 
         data(model), 
         coef(model), 
-        get(fixed, :dist, NamedTuple()), 
+        get(fixed(model), :dist, NamedTuple()), 
         method.dist
     )
 

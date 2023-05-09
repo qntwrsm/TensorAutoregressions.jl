@@ -10,17 +10,24 @@ interface.jl
 =#
 
 """
-    TensorAutoregression(y, R; dynamic=false, dist=:white_noise) -> model
+    TensorAutoregression(
+        y, 
+        R; 
+        dynamic=false, 
+        dist=:white_noise,
+        fixed=NamedTuple()
+    ) -> model
 
 Constructs a tensor autoregressive model for data `y` with autoregressive
 coefficient tensor of rank `R`, potentially dynamic, and tensor error
-distribution `dist`.
+distribution `dist` and fixed parameters indicated by `fixed`.
 """
 function TensorAutoregression(
     y::AbstractArray, 
     R::Integer; 
     dynamic::Bool=false, 
-    dist::Symbol=:white_noise
+    dist::Symbol=:white_noise,
+    fixed::NamedTuple=NamedTuple()
 )   
     dims = size(y)
     n = ndims(y) - 1
@@ -62,7 +69,7 @@ function TensorAutoregression(
         throw(ArgumentError("distribution $dist not supported."))
     end
 
-    return TensorAutoregression(y, ε, A)
+    return TensorAutoregression(y, ε, A, fixed)
 end
 
 """
@@ -121,13 +128,12 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
         end
     end
 
-    return TensorAutoregression(y_sim, ε_sim, A_sim)
+    return TensorAutoregression(y_sim, ε_sim, A_sim, fixed(model))
 end
 
 """
     fit!(
-        model; 
-        fixed=NamedTuple(), 
+        model;  
         init_method=(coef=:data, dist=:data), 
         ϵ=1e-4, 
         max_iter=1000, 
@@ -136,9 +142,8 @@ end
 
 Fit the tensor autoregressive model described by `model` to the data with
 tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
-a summary of the model fitting is printed. `fixed` indicates which parameters
-are fixed during fitting. `init_method` indicates which method is used for
-initialization of the parameters.
+a summary of the model fitting is printed. `init_method` indicates which method
+is used for initialization of the parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for
 obtaining the maximum likelihood estimates of the dynamic model and the
@@ -148,7 +153,6 @@ and tensor normal errors.
 """
 function fit!(
     model::TensorAutoregression;
-    fixed::NamedTuple=NamedTuple(),
     init_method::NamedTuple=(coef=:data, dist=:data), 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
@@ -167,14 +171,14 @@ function fit!(
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
         println("Fixed parameters:")
-        println("   Kruskal tensor: ", haskey(fixed, :coef) ? keys(fixed.coef) : "none")
-        println("   Distribution: ", haskey(fixed, :dist) ? keys(fixed.dist) : "none")
+        println("   Kruskal tensor: ", haskey(fixed(model), :coef) ? keys(fixed(model).coef) : "none")
+        println("   Distribution: ", haskey(fixed(model), :dist) ? keys(fixed(model).dist) : "none")
         println("===========================")
         println()
     end
     
     # initialization of model parameters
-    init!(model, fixed, init_method)
+    init!(model, init_method)
 
     # instantiate model
     model_prev = copy(model)
@@ -184,7 +188,7 @@ function fit!(
     δ = Inf
     while δ > ϵ && iter < max_iter
         # update model
-        update!(coef(model), dist(model), data(model), fixed)
+        update!(coef(model), dist(model), data(model), fixed(model))
 
         # compute maximum abs change in parameters
         δ = absdiff(model, model_prev)

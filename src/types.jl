@@ -196,18 +196,25 @@ representation `A`, potentially dynamic.
 mutable struct TensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
-    TA<:AbstractKruskal
+    TA<:AbstractKruskal,
+    Tfixed<:NamedTuple
 }
     y::Ty
     ε::Tε
     A::TA
-    function TensorAutoregression(y::AbstractArray, ε::AbstractTensorErrorDistribution, A::AbstractKruskal)
+    fixed::Tfixed
+    function TensorAutoregression(
+        y::AbstractArray, 
+        ε::AbstractTensorErrorDistribution, 
+        A::AbstractKruskal, 
+        fixed::NamedTuple
+    )
         dims = size(y)
         n = ndims(y) - 1
         size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
 
-        return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
+        return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
     end
 end
 
@@ -215,16 +222,18 @@ end
 data(model::TensorAutoregression) = model.y
 coef(model::TensorAutoregression) = model.A
 dist(model::TensorAutoregression) = model.ε
+fixed(model::TensorAutoregression) = model.fixed 
 resid(model::TensorAutoregression) = resid(dist(model))
 cov(model::TensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
 factors(model::TensorAutoregression) = factors(coef(model))
 loadings(model::TensorAutoregression) = loadings(coef(model))
 rank(model::TensorAutoregression) = rank(coef(model))
-Base.similar(model::TensorAutoregression) = TensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)))
+Base.similar(model::TensorAutoregression) = TensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
 function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
     copyto!(data(dest), data(src))
     copyto!(dist(dest), dist(src))
     copyto!(coef(dest), coef(src))
+    fixed(dest) = fixed(src)
 
     return dest
 end
