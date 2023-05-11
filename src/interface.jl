@@ -178,7 +178,7 @@ function fit!(
     end
     
     # initialization of model parameters
-    init!(model, init_method)s
+    init!(model, init_method)
 
     # instantiate model
     model_prev = copy(model)

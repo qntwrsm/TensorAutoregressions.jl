@@ -133,19 +133,31 @@ CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
 obtained from the factor model representation of the model.
 - Initiliazation of the tensor error distribution is based on a randomly sampled
 covariance matrix from an inverse Wishart distribution.
+
+When `method` is set to `:none` no initialization is performed and model is
+assumed to have been initialized manually before fitting.
 """
 function init!(model::TensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    init!(coef(model), data(model), get(fixed(model), :coef, NamedTuple()), method.coef)
+    if method.coef != :none
+        init!(
+            coef(model), 
+            data(model), 
+            get(fixed(model), :coef, NamedTuple()), 
+            method.coef
+        )
+    end
 
     # initialize tensor error distribution
-    init!(
-        dist(model), 
-        data(model), 
-        coef(model), 
-        get(fixed(model), :dist, NamedTuple()), 
-        method.dist
-    )
+    if method.dist != :none
+        init!(
+            dist(model), 
+            data(model), 
+            coef(model), 
+            get(fixed(model), :dist, NamedTuple()), 
+            method.dist
+        )
+    end
 
     return nothing
 end
@@ -268,7 +280,6 @@ matrix a mode specific sample covariance is calculated.
 When `method` is set to `:random`:
 Initialization of the tensor error distribution is based on a randomly sampled
 covariance matrix from an inverse Wishart distribution.
-
 """
 function init!(
     ε::AbstractTensorErrorDistribution, 
