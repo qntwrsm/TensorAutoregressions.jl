@@ -178,7 +178,7 @@ function fit!(
     end
     
     # initialization of model parameters
-    init!(model, init_method)
+    init!(model, init_method)s
 
     # instantiate model
     model_prev = copy(model)
@@ -246,7 +246,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods; α=.05, orth=false) -> irfs
+    irf(model, periods; α=.05, orth=false, response=:mean) -> irfs
 
 Compute impulse response functions `periods` periods ahead and corresponding
 `α`% upper and lower confidence bounds using fitted tensor autoregressive model
@@ -254,22 +254,38 @@ Compute impulse response functions `periods` periods ahead and corresponding
 simulation.
 If `orth` is true, the orthogonalized impulse response functions are
 computed.
+If the model is dynamic, `response` indicates how the impulse response function
+should aggregate uncertainty. If `response` is `:mean`, the mean of the impulse
+response function is computed. If `response` is `:median`, the median of the
+impulse response function is computed.
 """
-function irf(model::TensorAutoregression, periods::Integer; α::Real=.05, orth::Bool=false)
+function irf(
+    model::TensorAutoregression, 
+    periods::Integer; 
+    α::Real=.05, 
+    orth::Bool=false,
+    response::Symbol=:mean
+)
     # moving average representation
     if coef(model) isa StaticKruskal
         irf_type = StaticIRF
         Ψ = moving_average(coef(model), periods)
     else
         irf_type = DynamicIRF
-        Ψ = moving_average(coef(model), periods, data(model), dist(model))
+        Ψ = moving_average(
+            coef(model), 
+            periods, 
+            data(model), 
+            dist(model), 
+            response
+        )
     end
 
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
     # confidence bounds
-    (lower, upper) = confidence_bounds(model, periods, α, orth)
+    (lower, upper) = confidence_bounds(model, periods, α, orth, response)
 
     return irf_type(Ψ, lower, upper, orth)
 end

@@ -12,10 +12,19 @@ utilities.jl
 =#
 
 """
-    confidence_bounds(model, periods, α, orth, samples=100, burn=100, rng=Xoshiro()) -> (lower, upper)
+    confidence_bounds(
+        model, 
+        periods, 
+        α, 
+        orth, 
+        response, 
+        samples=100, 
+        burn=100, 
+        rng=Xoshiro()
+    ) -> (lower, upper)
 
 Compute Monte Carlo `α`% confidence bounds for impulse response functions of the
-tensor autoregressive model given by `model`. The confidence boudns are
+tensor autoregressive model given by `model`. The confidence bounds are
 estimated using a Monte Carlo simulation with `samples` and a burn-in period
 `burn`.
 """
@@ -24,6 +33,7 @@ function confidence_bounds(
     periods::Integer,
     α::Real, 
     orth::Bool, 
+    response::Symbol, 
     samples::Integer=100, 
     burn::Integer=100, 
     rng::AbstractRNG=Xoshiro()
@@ -42,7 +52,7 @@ function confidence_bounds(
         if coef(model) isa StaticKruskal
             Ψ[s] = moving_average(coef(sim), periods)
         else
-            Ψ[s] = moving_average(coef(sim), periods, data(sim), dist(sim))
+            Ψ[s] = moving_average(coef(sim), periods, data(sim), dist(sim), response)
         end
 
         # orthogonalize
@@ -63,7 +73,7 @@ function confidence_bounds(
 end
 
 """
-    moving_average(A, n[, y, ε]) -> Ψ
+    moving_average(A, n[, y, ε, symbol]) -> Ψ
 
 Moving average, ``MA(∞)``, representation of the tensor autoregressive model
 with Kruskal coefficient tensor `A`, computed up to the `n`th term.
@@ -83,7 +93,13 @@ function moving_average(A::StaticKruskal, n::Integer)
     return Ψ
 end
 
-function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::TensorNormal)
+function moving_average(
+    A::DynamicKruskal, 
+    n::Integer, 
+    y::AbstractArray, 
+    ε::TensorNormal, 
+    response::Symbol
+)
     dims = size(A)
 
     # tensorize identity matrix
@@ -97,12 +113,19 @@ function moving_average(A::DynamicKruskal, n::Integer, y::AbstractArray, ε::Ten
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
         particles = get_particles(selectdim(y, ndims(y), 1:t+1), A, ε, n)
+        # cumulative product
+        Λ = cumprod(particles, dims=ndims(particles))
+        # uncertainty aggregation
+        if response == :mean
+            λ = dropdims(mean(Λ, dims=2), dims=2)
+        elseif response == :median
+            λ = dropdims(median(Λ, dims=2), dims=2)
+        end
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
             if h == 1
                 ψh .= Id 
             else
-                λ = mean(prod(particles[1,:,1:h-1], dims=2))
-                ψh .= λ * tensorize(An^(h-1), 1:ndims(ψh)÷2, size(ψh))
+                ψh .= λ[1,h-1] * tensorize(An^(h-1), 1:ndims(ψh)÷2, size(ψh))
             end
         end
     end
