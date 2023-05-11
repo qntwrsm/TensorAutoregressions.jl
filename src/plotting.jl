@@ -109,9 +109,9 @@ function data_plot(model::TensorAutoregression, labels, time)
     end
 
     # decorations
-    for i = 1:dims[maxmode]
-        axs[i,end].xlabel = "time"
-        axs[i,end].xticks = (ticks, values)
+    for i = 1:dims[maxmode], j = 1:dims[n]
+        axs[i,j].xlabel = "time"
+        axs[i,j].xticks = (ticks, values)
     end
     hidexdecorations!.(axs[:,1:end-1], grid=false)
     hideydecorations!.(axs[rows+1:end,:], grid=false)
