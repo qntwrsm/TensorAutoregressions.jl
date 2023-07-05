@@ -73,6 +73,29 @@ function TensorAutoregression(
 end
 
 """
+    TensorAutoregression(
+        dims, 
+        R; 
+        dynamic=false, 
+        dist=:white_noise,
+        fixed=NamedTuple()
+    ) -> model
+
+Constructs a tensor autoregressive model of dimensions `dims` with
+autoregressive coefficient tensor of rank `R`, potentially dynamic, and tensor
+error distribution `dist` and fixed parameters indicated by `fixed`.
+"""
+function TensorAutoregression(
+    dims::Dims, 
+    R::Integer; 
+    dynamic::Bool=false, 
+    dist::Symbol=:white_noise,
+    fixed::NamedTuple=NamedTuple()
+)   
+    return TensorAutoregression(zeros(dims), R, dynamic, dist, fixed)
+end
+
+"""
     simulate(model; burn=100, rng=Xoshiro()) -> sim
 
 Simulate data from the tensor autoregressive model described by `model` and
