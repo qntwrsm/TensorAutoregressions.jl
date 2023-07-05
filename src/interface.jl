@@ -92,7 +92,7 @@ function TensorAutoregression(
     dist::Symbol=:white_noise,
     fixed::NamedTuple=NamedTuple()
 )   
-    return TensorAutoregression(zeros(dims), R, dynamic, dist, fixed)
+    return TensorAutoregression(zeros(dims), R, dynamic=dynamic, dist=dist, fixed=fixed)
 end
 
 """
