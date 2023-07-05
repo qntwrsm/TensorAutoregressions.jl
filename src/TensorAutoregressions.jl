@@ -36,7 +36,7 @@ export
     ## getters
     data, coef, dist,   # general
     resid, cov, # residuals
-    factors, loadings, rank, # Kruskal coefficient tensor
+    factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
 
     # simulate
     simulate,
