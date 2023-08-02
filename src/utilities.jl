@@ -162,7 +162,7 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     C = [cholesky(Hermitian(Σi)).U for Σi ∈ Σ]
 
     # orthogonalize responses
-    Ψ_orth = tucker(Ψ, C, 1:length(C))
+    Ψ_orth = tucker(Ψ, C)
 
     return Ψ_orth
 end
@@ -247,15 +247,15 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
 
     # collapsing
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
     Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, transpose.(Cinv), 1:n)
+    A_star = tucker(X, transpose.(Cinv))
     y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))) for t = 1:last(dims)-1]
 
     # initial conditions
