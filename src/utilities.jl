@@ -142,13 +142,16 @@ Orthogonalize impulse responses `Ψ` using the Cholesky decomposition of
 covariance matrix `Σ`.
 """
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
+    n = ndims(Ψ) - 1
+    R = n÷2+1:n
+
     # Cholesky decomposition of Σ
     C = cholesky(Hermitian(Σ))
 
     # orthogonalize responses
     Ψ_orth = similar(Ψ)
-    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tensorize(matricize(ψ, 1:ndims(ψ)÷2) * C.L, 1:ndims(ψ)÷2, size(ψ))
+    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=n+1))
+        selectdim(Ψ_orth, n+1, h) .= tensorize(matricize(ψ, R) * C.L, R, size(ψ))
     end
 
     return Ψ_orth
@@ -156,7 +159,7 @@ end
 
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).L for Σi ∈ Σ]
+    C = [cholesky(Hermitian(Σi)).U for Σi ∈ Σ]
 
     # orthogonalize responses
     Ψ_orth = tucker(Ψ, C, 1:length(C))
