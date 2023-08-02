@@ -119,7 +119,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
     (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
     
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i][:,r] * factors(A_sim)[i+n][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
+    U = [[factors(A_sim)[i+n][:,r] * factors(A_sim)[i][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
 
     # burn-in
     y_burn = similar(data(model), dims[1:n]..., burn+1)
@@ -130,7 +130,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
             # autoregressive component
             for r = 1:rank(A_burn)
                 λ = A_burn isa StaticKruskal ? loadings(A_burn)[r] : loadings(A_burn)[r,t-1]
-                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U[r], 1:n)
+                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U[r])
             end
         end
     end
@@ -146,7 +146,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
             # autoregressive component
             for r = 1:rank(A_sim)
                 λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
-                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U[r], 1:n)
+                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U[r])
             end
         end
     end
