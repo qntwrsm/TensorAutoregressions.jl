@@ -228,7 +228,7 @@ function fit!(
         println("Optimization summary")
         println("====================")
         println("Convergence: ", δ < ϵ ? "success" : "failed")
-        println("Maximum absolute change $δ")
+        println("Maximum absolute change: $δ")
         println("Iterations: $iter")
         println("Log-likelihood: $(loglike(model))")
         println("====================")
@@ -253,7 +253,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
     end
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)]
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
@@ -262,7 +262,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
     # forecast
     for h = 1:periods, r = 1:rank(model)
         λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
-        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
+        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h)
     end
 
     return forecasts
