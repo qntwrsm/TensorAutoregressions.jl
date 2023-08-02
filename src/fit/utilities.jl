@@ -36,14 +36,14 @@ function loglike(y::AbstractArray, A::StaticKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -84,14 +84,14 @@ function loglike(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
