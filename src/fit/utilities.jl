@@ -209,7 +209,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = cp_als(tensorize(β_star, n+1:2*n, (dims[1:end-1]..., dims[1:end-1]...)), rank(A))
+        cp = cp_als(tensorize(β_star, n+1:2*n, (dims[1:n]..., dims[1:n]...)), rank(A))
     end
     # factors
     if haskey(fixed, :factors)
@@ -299,11 +299,11 @@ function init!(
     resid(ε) .= y_lead
     for r = 1:rank(A)
         # outer product of Kruskal factors
-        U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
+        U = [factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n]
         if A isa StaticKruskal
-            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U, 1:n)
+            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U)
         else
-            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
+            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U)
         end
     end
     # covariance
