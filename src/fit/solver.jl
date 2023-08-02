@@ -25,7 +25,7 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
     fixed_coef = get(fixed, :coef, NamedTuple())
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # lag and lead variables
     y_lead = selectdim(y, n+1, 2:last(dims))
@@ -47,22 +47,22 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
             M = Yk * Xk'
 
             # update factor k
-            update_factor!(
-                factors(A)[k], 
-                factors(A)[k+n], 
-                M, 
-                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
-            )
+            update_factor!(factors(A)[k], factors(A)[k+n], G \ M', inv(loadings(A)[1]))
             # update factor k+n
-            update_factor!(factors(A)[k+n], factors(A)[k], G \ M', inv(loadings(A)[1]))
+            update_factor!(
+                factors(A)[k+n], 
+                factors(A)[k], 
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k], G, factors(A)[k]))
+            )
 
             # update outer product of Kruskal factors
-            U[k] = factors(A)[k] * factors(A)[k+n]'
+            U[k] = factors(A)[k+n] * factors(A)[k]'
         end
     end
 
     # regressor tensor
-    X = tucker(y_lag, U, 1:n)
+    X = tucker(y_lag, U)
 
     # update loading
     if !haskey(fixed_coef, :loadings)
@@ -97,7 +97,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
@@ -125,19 +125,20 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
             update_factor!(
                 factors(A)[k], 
                 factors(A)[k+n], 
-                M, 
-                inv(loadings(A)[1] * dot(factors(A)[k+n], G, factors(A)[k+n]))
+                G \ M' * Ω[k], 
+                inv(loadings(A)[1] * dot(factors(A)[k+n], Ω[k], factors(A)[k+n]))
             )
             # update factor k+n
             update_factor!(
                 factors(A)[k+n], 
                 factors(A)[k], 
-                G \ M' * Ω[k], 
-                inv(loadings(A)[1] * dot(factors(A)[k], Ω[k], factors(A)[k]))
+                M, 
+                inv(loadings(A)[1] * dot(factors(A)[k], G, factors(A)[k]))
             )
+            
 
             # update outer product of Kruskal factors
-            U[k] = factors(A)[k] * factors(A)[k+n]'
+            U[k] = factors(A)[k+n] * factors(A)[k]'
         end
 
         if !haskey(fixed_dist, :cov)
@@ -159,8 +160,8 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
     end
 
     # dependent variable and regressor tensors
-    Z = tucker(y_lead, Cinv, 1:n)
-    X = tucker(y_lag, S, 1:n)
+    Z = tucker(y_lead, Cinv)
+    X = tucker(y_lag, S)
 
     # update loading
     if !haskey(fixed_coef, :loadings)
@@ -170,7 +171,7 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
     end
 
     # update residuals
-    resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U, 1:n)
+    resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U)
 
     return nothing
 end
@@ -285,7 +286,7 @@ function update_static!(
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
@@ -321,19 +322,19 @@ function update_static!(
             update_factor!(
                 factors(A)[k], 
                 factors(A)[k+n], 
-                M, 
-                inv(dot(factors(A)[k+n], G, factors(A)[k+n]))
+                G \ M' * Ω[k], 
+                inv(dot(factors(A)[k+n], Ω[k], factors(A)[k+n]))
             )
             # update factor k+n
             update_factor!(
                 factors(A)[k+n], 
                 factors(A)[k], 
-                G \ M' * Ω[k], 
-                inv(dot(factors(A)[k], Ω[k], factors(A)[k]))
+                M, 
+                inv(dot(factors(A)[k], G, factors(A)[k]))
             )
 
             # update outer product of Kruskal factors
-            U[k] = factors(A)[k] * factors(A)[k+n]'
+            U[k] = factors(A)[k+n] * factors(A)[k]'
         end
 
         if !haskey(fixed_dist, :cov)
@@ -357,7 +358,7 @@ function update_static!(
     end
 
     # update residuals
-    resid(ε) .= y_lead .- reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
+    resid(ε) .= y_lead .- reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U)
 
     return nothing
 end
