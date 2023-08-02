@@ -209,7 +209,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+        cp = cp_als(tensorize(β_star, n+1:2*n, (dims[1:end-1]..., dims[1:end-1]...)), rank(A))
     end
     # factors
     if haskey(fixed, :factors)
@@ -247,8 +247,8 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
             # regressors
             for r = 1:rank(A)
                 # outer product of Kruskal factors
-                U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
-                xt[:,r] = vec(tucker(yt, U, 1:n))
+                U = [factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n]
+                xt[:,r] = vec(tucker(yt, U))
             end
             loadings(A)[:,t] = xt \ z[:,t]
         end
