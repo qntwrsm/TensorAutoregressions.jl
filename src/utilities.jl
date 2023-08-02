@@ -80,14 +80,15 @@ with Kruskal coefficient tensor `A`, computed up to the `n`th term.
 """
 function moving_average(A::StaticKruskal, n::Integer)
     dims = size(A)
+    R = length(dims)÷2+1:length(dims)
 
     # matricize Kruskal tensor
-    An = matricize(full(A), 1:length(dims)÷2)
+    An = matricize(full(A), R)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
     for (h, ψh) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        ψh .= tensorize(An^(h-1), 1:ndims(ψh)÷2, dims)
+        ψh .= tensorize(An^(h-1), R, dims)
     end
 
     return Ψ
@@ -101,12 +102,13 @@ function moving_average(
     response::Symbol
 )
     dims = size(A)
+    R = (length(dims)-1)÷2+1:length(dims)-1
 
     # tensorize identity matrix
-    Id = tensorize(I(prod(size(y)[1:end-1])), 1:(length(dims)-1)÷2, dims[1:end-1])
+    Id = tensorize(I(prod(R)), R, dims[1:end-1])
 
     # matricize Kruskal tensor
-    An = matricize(full(A), 1:(length(dims)-1)÷2)
+    An = matricize(full(A), R)
 
     # moving average coefficients
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
@@ -125,7 +127,7 @@ function moving_average(
             if h == 1
                 ψh .= Id 
             else
-                ψh .= λ[1,h-1] * tensorize(An^(h-1), 1:ndims(ψh)÷2, size(ψh))
+                ψh .= λ[1,h-1] * tensorize(An^(h-1), R, size(ψh))
             end
         end
     end
