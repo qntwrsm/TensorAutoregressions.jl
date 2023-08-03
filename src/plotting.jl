@@ -360,14 +360,14 @@ function nested_labels!(grid, dims, n, i, labels, loc)
 end
 
 """
-    irf_plot(irfs, response, impulse[, time]) -> fig
+    irf_plot(irfs, impulse, response[, time]) -> fig
 
 Plot the impulse response function `irfs` for the response `response` to the
 impulse `impulse`. When `irfs` is dynamic `time` can be provided to plot the
 impulse response function for a specific time period.
 """
-function irf_plot(irfs::StaticIRF, response, impulse)
-    ψ = irf(irfs, response, impulse)
+function irf_plot(irfs::StaticIRF, impulse, response)
+    ψ = irf(irfs, impulse, response)
     periods = length(ψ) - 1
 
     # setup figure
@@ -385,14 +385,14 @@ function irf_plot(irfs::StaticIRF, response, impulse)
     lines!(ax, 0:periods, ψ, color=:black)
 
     # confidence bands
-    lines!(ax, 0:periods, lower(irfs, response, impulse), color=:gray50, linestyle=:dash)
-    lines!(ax, 0:periods, upper(irfs, response, impulse), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, lower(irfs, impulse, response), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, upper(irfs, impulse, response), color=:gray50, linestyle=:dash)
 
     return fig
 end
 
-function irf_plot(irfs::DynamicIRF, response, impulse)
-    ψ = irf(irfs, response, impulse)
+function irf_plot(irfs::DynamicIRF, impulse, response)
+    ψ = irf(irfs, impulse, response)
     periods = size(ψ, 1) - 1
     time = size(ψ, 2)
 
@@ -415,8 +415,8 @@ function irf_plot(irfs::DynamicIRF, response, impulse)
     return fig
 end
 
-function irf_plot(irfs::DynamicIRF, response, impulse, time)
-    ψ = irf(irfs, response, impulse, time)
+function irf_plot(irfs::DynamicIRF, impulse, response, time)
+    ψ = irf(irfs, impulse, response, time)
     periods = size(ψ, 1) - 1
 
     # setup figure
@@ -438,8 +438,8 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time)
     return fig
 end
 
-function irf_plot(irfs::DynamicIRF, response, impulse, time::Integer)
-    ψ = irf(irfs, response, impulse, time)
+function irf_plot(irfs::DynamicIRF, impulse, response, time::Integer)
+    ψ = irf(irfs, impulse, response, time)
     periods = length(ψ) - 1
 
     # setup figure
@@ -457,8 +457,8 @@ function irf_plot(irfs::DynamicIRF, response, impulse, time::Integer)
     lines!(ax, 0:periods, ψ, color=:black)
 
     # confidence bands
-    lines!(ax, 0:periods, lower(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
-    lines!(ax, 0:periods, upper(irfs, response, impulse, time), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, lower(irfs, impulse, response, time), color=:gray50, linestyle=:dash)
+    lines!(ax, 0:periods, upper(irfs, impulse, response, time), color=:gray50, linestyle=:dash)
 
     return fig
 end
