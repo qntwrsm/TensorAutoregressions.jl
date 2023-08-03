@@ -283,15 +283,15 @@ end
 
 # methods
 irf(irfs::AbstractIRF) = irfs.Ψ
-irf(irfs::StaticIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :]
-irf(irfs::DynamicIRF, response, impulse) = @view irf(irfs)[response..., impulse..., :, :]
-irf(irfs::DynamicIRF, response, impulse, time) = @view irf(irfs)[response..., impulse..., :, time]
+irf(irfs::StaticIRF, impulse, response) = @view irf(irfs)[impulse..., response..., :]
+irf(irfs::DynamicIRF, impulse, response) = @view irf(irfs)[impulse..., response..., :, :]
+irf(irfs::DynamicIRF, impulse, response, time) = @view irf(irfs)[impulse..., response..., :, time]
 lower(irfs::AbstractIRF) = irfs.lower
-lower(irfs::StaticIRF, response, impulse) = @view lower(irfs)[response..., impulse..., :]
-lower(irfs::DynamicIRF, response, impulse) = @view lower(irfs)[response..., impulse..., :, :]
-lower(irfs::DynamicIRF, response, impulse, time) = @view lower(irfs)[response..., impulse..., :, time]
+lower(irfs::StaticIRF, impulse, response) = @view lower(irfs)[impulse..., response..., :]
+lower(irfs::DynamicIRF, impulse, response) = @view lower(irfs)[impulse..., response..., :, :]
+lower(irfs::DynamicIRF, impulse, response, time) = @view lower(irfs)[impulse..., response..., :, time]
 upper(irfs::AbstractIRF) = irfs.upper
-upper(irfs::StaticIRF, response, impulse) = @view upper(irfs)[response..., impulse..., :]
-upper(irfs::DynamicIRF, response, impulse) = @view upper(irfs)[response..., impulse..., :, :]
-upper(irfs::DynamicIRF, response, impulse, time) = @view upper(irfs)[response..., impulse..., :, time]
+upper(irfs::StaticIRF, impulse, response) = @view upper(irfs)[impulse..., response..., :]
+upper(irfs::DynamicIRF, impulse, response) = @view upper(irfs)[impulse..., response..., :, :]
+upper(irfs::DynamicIRF, impulse, response, time) = @view upper(irfs)[impulse..., response..., :, time]
 orth(irfs::AbstractIRF) = irfs.orth 

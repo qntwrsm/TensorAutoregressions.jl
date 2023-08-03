@@ -42,13 +42,13 @@ function TensorAutoregression(
             similar(y, R), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
     else
         A = StaticKruskal(
             similar(y, R), 
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
     end
@@ -119,7 +119,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
     (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
     
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i][:,r] * factors(A_sim)[i+n][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
+    U = [[factors(A_sim)[i+n][:,r] * factors(A_sim)[i][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
 
     # burn-in
     y_burn = similar(data(model), dims[1:n]..., burn+1)
@@ -130,7 +130,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
             # autoregressive component
             for r = 1:rank(A_burn)
                 λ = A_burn isa StaticKruskal ? loadings(A_burn)[r] : loadings(A_burn)[r,t-1]
-                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U[r], 1:n)
+                yt .+= λ .* tucker(selectdim(y_burn, n+1, t-1), U[r])
             end
         end
     end
@@ -146,7 +146,7 @@ function simulate(model::TensorAutoregression; burn::Integer=100, rng::AbstractR
             # autoregressive component
             for r = 1:rank(A_sim)
                 λ = A_sim isa StaticKruskal ? loadings(A_sim)[r] : loadings(A_sim)[r,t-1]
-                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U[r], 1:n)
+                yt .+= λ .* tucker(selectdim(y_sim, n+1, t-1), U[r])
             end
         end
     end
@@ -228,7 +228,7 @@ function fit!(
         println("Optimization summary")
         println("====================")
         println("Convergence: ", δ < ϵ ? "success" : "failed")
-        println("Maximum absolute change $δ")
+        println("Maximum absolute change: $δ")
         println("Iterations: $iter")
         println("Log-likelihood: $(loglike(model))")
         println("====================")
@@ -253,7 +253,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
     end
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i][:,r] * factors(model)[i+n][:,r]' for i = 1:n] for r = 1:rank(model)]
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
@@ -262,7 +262,7 @@ function forecast(model::TensorAutoregression, periods::Integer)
     # forecast
     for h = 1:periods, r = 1:rank(model)
         λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
-        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h, 1:n)
+        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h)
     end
 
     return forecasts

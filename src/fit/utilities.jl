@@ -36,14 +36,14 @@ function loglike(y::AbstractArray, A::StaticKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -84,14 +84,14 @@ function loglike(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv, 1:n)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -209,7 +209,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = cp_als(reshape(β_star, dims[1:n]..., dims[1:n]...), rank(A))
+        cp = cp_als(tensorize(β_star, n+1:2n, (dims[1:n]..., dims[1:n]...)), rank(A))
     end
     # factors
     if haskey(fixed, :factors)
@@ -218,13 +218,11 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         if method == :data
             factors(A) .= cp.fmat
         elseif method == :random
-            for k = 1:n
-                for r = 1:rank(A)
-                    factors(A)[k][:,r] .= randn(dims[k])
-                    factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
-                    factors(A)[k+n][:,r] .= randn(dims[k])
-                    factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
-                end
+            for k = 1:n, r = 1:rank(A)
+                factors(A)[k][:,r] .= randn(dims[k])
+                factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
+                factors(A)[k+n][:,r] .= randn(dims[k])
+                factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
             end
         end
     end
@@ -247,8 +245,8 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
             # regressors
             for r = 1:rank(A)
                 # outer product of Kruskal factors
-                U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
-                xt[:,r] = vec(tucker(yt, U, 1:n))
+                U = [factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n]
+                xt[:,r] = vec(tucker(yt, U))
             end
             loadings(A)[:,t] = xt \ z[:,t]
         end
@@ -299,11 +297,11 @@ function init!(
     resid(ε) .= y_lead
     for r = 1:rank(A)
         # outer product of Kruskal factors
-        U = [factors(A)[i][:,r] * factors(A)[i+n][:,r]' for i = 1:n]
+        U = [factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n]
         if A isa StaticKruskal
-            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U, 1:n)
+            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U)
         else
-            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U, 1:n)
+            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U)
         end
     end
     # covariance
@@ -315,7 +313,7 @@ function init!(
                 cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
             elseif method == :random
                 p = prod(dims[1:n])
-                cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
+                cov(ε).data .= rand(InverseWishart(p+2, I(p)))
             end
         end
     else

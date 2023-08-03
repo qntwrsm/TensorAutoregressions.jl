@@ -80,14 +80,15 @@ with Kruskal coefficient tensor `A`, computed up to the `n`th term.
 """
 function moving_average(A::StaticKruskal, n::Integer)
     dims = size(A)
+    R = length(dims)÷2+1:length(dims)
 
     # matricize Kruskal tensor
-    An = matricize(full(A), 1:length(dims)÷2)
+    An = matricize(full(A), R)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
     for (h, ψh) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        ψh .= tensorize(An^(h-1), 1:ndims(ψh)÷2, dims)
+        ψh .= tensorize(An^(h-1), R, dims)
     end
 
     return Ψ
@@ -101,12 +102,13 @@ function moving_average(
     response::Symbol
 )
     dims = size(A)
+    R = length(dims)÷2+1:length(dims)-1
 
     # tensorize identity matrix
-    Id = tensorize(I(prod(size(y)[1:end-1])), 1:(length(dims)-1)÷2, dims[1:end-1])
+    Id = tensorize(I(prod(R)), R, dims[1:end-1])
 
     # matricize Kruskal tensor
-    An = matricize(full(A), 1:(length(dims)-1)÷2)
+    An = matricize(full(A), R)
 
     # moving average coefficients
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
@@ -125,7 +127,7 @@ function moving_average(
             if h == 1
                 ψh .= Id 
             else
-                ψh .= λ[1,h-1] * tensorize(An^(h-1), 1:ndims(ψh)÷2, size(ψh))
+                ψh .= λ[1,h-1] * tensorize(An^(h-1), R, size(ψh))
             end
         end
     end
@@ -140,13 +142,16 @@ Orthogonalize impulse responses `Ψ` using the Cholesky decomposition of
 covariance matrix `Σ`.
 """
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
+    n = ndims(Ψ) - 1
+    R = n÷2+1:n
+
     # Cholesky decomposition of Σ
     C = cholesky(Hermitian(Σ))
 
     # orthogonalize responses
     Ψ_orth = similar(Ψ)
-    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        selectdim(Ψ_orth, ndims(Ψ_orth), h) .= tensorize(matricize(ψ, 1:ndims(ψ)÷2) * C.L, 1:ndims(ψ)÷2, size(ψ))
+    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=n+1))
+        selectdim(Ψ_orth, n+1, h) .= tensorize(matricize(ψ, R) * C.L, R, size(ψ))
     end
 
     return Ψ_orth
@@ -154,10 +159,10 @@ end
 
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).L for Σi ∈ Σ]
+    C = [cholesky(Hermitian(Σi)).U for Σi ∈ Σ]
 
     # orthogonalize responses
-    Ψ_orth = tucker(Ψ, C, 1:length(C))
+    Ψ_orth = tucker(Ψ, C)
 
     return Ψ_orth
 end
@@ -242,15 +247,15 @@ function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i] * factors(A)[i+n]' for i = 1:n]
+    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
 
     # collapsing
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S, 1:n)
+    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
     Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, transpose.(Cinv), 1:n)
+    A_star = tucker(X, transpose.(Cinv))
     y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))) for t = 1:last(dims)-1]
 
     # initial conditions
@@ -413,7 +418,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     for εt ∈ eachslice(resid(ε_burn), dims=n+1)
         # sample independent random normals and use tucker product with Cholesky 
         # decompositions
-        εt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
+        εt .= tucker(randn(rng, dims[1:n]...), C)
     end
 
     ε_sim = similar(ε)
@@ -422,7 +427,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     for εt ∈ eachslice(resid(ε_sim), dims=n+1)
         # sample independent random normals and use tucker product with Cholesky 
         # decompositions
-        εt .= tucker(randn(rng, dims[1:n]...), C, 1:n)
+        εt .= tucker(randn(rng, dims[1:n]...), C)
     end
 
     return (ε_sim, ε_burn)
