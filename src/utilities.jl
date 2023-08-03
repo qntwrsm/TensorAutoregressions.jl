@@ -102,7 +102,7 @@ function moving_average(
     response::Symbol
 )
     dims = size(A)
-    R = (length(dims)-1)÷2+1:length(dims)-1
+    R = length(dims)÷2+1:length(dims)-1
 
     # tensorize identity matrix
     Id = tensorize(I(prod(R)), R, dims[1:end-1])

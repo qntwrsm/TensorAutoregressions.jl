@@ -42,13 +42,13 @@ function TensorAutoregression(
             similar(y, R), 
             Diagonal(similar(y, R)), 
             Symmetric(similar(y, R, R)),
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
     else
         A = StaticKruskal(
             similar(y, R), 
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2*n], 
+            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
     end

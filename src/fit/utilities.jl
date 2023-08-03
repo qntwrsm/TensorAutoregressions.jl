@@ -209,7 +209,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = cp_als(tensorize(β_star, n+1:2*n, (dims[1:n]..., dims[1:n]...)), rank(A))
+        cp = cp_als(tensorize(β_star, n+1:2n, (dims[1:n]..., dims[1:n]...)), rank(A))
     end
     # factors
     if haskey(fixed, :factors)
@@ -218,13 +218,11 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         if method == :data
             factors(A) .= cp.fmat
         elseif method == :random
-            for k = 1:n
-                for r = 1:rank(A)
-                    factors(A)[k][:,r] .= randn(dims[k])
-                    factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
-                    factors(A)[k+n][:,r] .= randn(dims[k])
-                    factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
-                end
+            for k = 1:n, r = 1:rank(A)
+                factors(A)[k][:,r] .= randn(dims[k])
+                factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
+                factors(A)[k+n][:,r] .= randn(dims[k])
+                factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
             end
         end
     end
@@ -315,7 +313,7 @@ function init!(
                 cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
             elseif method == :random
                 p = prod(dims[1:n])
-                cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
+                cov(ε).data .= rand(InverseWishart(p+2, I(p)))
             end
         end
     else
