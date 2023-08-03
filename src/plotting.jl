@@ -177,7 +177,7 @@ function kruskal_plot(A::StaticKruskal)
     ax = Axis(fig[1, 1])
 
     # Kruskal coefficient tensor factors and static loadings
-    hm = heatmap!(ax, matricize(full(A), 1:n)')
+    hm = heatmap!(ax, matricize(full(A), n+1:2n)')
     Colorbar(fig[1, 2], hm)
 
     return fig
@@ -204,7 +204,7 @@ function kruskal_plot(A::StaticKruskal, labels)
     end
 
     # Kruskal coefficient tensor
-    hm = heatmap!(ax, matricize(full(A), 1:n)')
+    hm = heatmap!(ax, matricize(full(A), n+1:2*n)')
     Colorbar(gc[1, 1], hm)
 
     # ticks
@@ -223,7 +223,7 @@ function kruskal_plot(A::DynamicKruskal)
     axs = [Axis(fig[1, 1]) for fig ∈ figs]
 
     # Kruskal coefficient tensor factors
-    hm = heatmap!(axs[1], matricize(full(A), 1:n)')
+    hm = heatmap!(axs[1], matricize(full(A), n+1:2n)')
     Colorbar(figs[1][1, 2], hm)
 
     # dynamic Kruskal loadings
@@ -253,7 +253,7 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     end
 
     # Kruskal coefficient tensor factors
-    hm = heatmap!(axs[1], matricize(full(A), 1:n)')
+    hm = heatmap!(axs[1], matricize(full(A), n+1:2n)')
     Colorbar(gc[1, 1], hm)
 
     # ticks
