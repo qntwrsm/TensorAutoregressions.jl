@@ -203,7 +203,7 @@ Kruskal tensor representation `A`.
 mutable struct StaticTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
-    TA<:AbstractKruskal,
+    TA<:StaticKruskal,
     Tfixed<:NamedTuple
 } <: AbstractTensorAutoregression
     y::Ty
@@ -213,14 +213,45 @@ mutable struct StaticTensorAutoregression{
     function StaticTensorAutoregression(
         y::AbstractArray, 
         ε::AbstractTensorErrorDistribution, 
-        A::AbstractKruskal, 
+        A::StaticKruskal, 
         fixed::NamedTuple
     )
         dims = size(y)
         n = ndims(y) - 1
         size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
-        
+
+        return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
+    end
+end
+
+"""
+    DynamicTensorAutoregression <: AbstractTensorAutoregression
+
+Tensor autoregressive model with tensor error distribution `ε` and dynamic
+Kruskal tensor representation `A`.
+"""
+mutable struct DynamicTensorAutoregression{
+    Ty<:AbstractArray, 
+    Tε<:AbstractTensorErrorDistribution,
+    TA<:DynamicKruskal,
+    Tfixed<:NamedTuple
+} <: AbstractTensorAutoregression
+    y::Ty
+    ε::Tε
+    A::TA
+    fixed::Tfixed
+    function DynamicTensorAutoregression(
+        y::AbstractArray, 
+        ε::AbstractTensorErrorDistribution, 
+        A::DynamicKruskal, 
+        fixed::NamedTuple
+    )
+        dims = size(y)
+        n = ndims(y) - 1
+        size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
+        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        ε isa WhiteNoise && throw(ArgumentError("dynamic model with white noise error not supported."))
 
         return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
     end
