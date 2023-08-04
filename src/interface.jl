@@ -324,7 +324,7 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods; α=.05, orth=false[, response=:mean]) -> irfs
+    irf(model, periods; α=.05, orth=false) -> irfs
 
 Compute impulse response functions `periods` periods ahead and corresponding
 `α`% upper and lower confidence bounds using fitted tensor autoregressive model
@@ -332,50 +332,27 @@ Compute impulse response functions `periods` periods ahead and corresponding
 simulation.
 If `orth` is true, the orthogonalized impulse response functions are
 computed.
-If the model is dynamic, `response` indicates how the impulse response function
-should aggregate uncertainty. If `response` is `:mean`, the mean of the impulse
-response function is computed. If `response` is `:median`, the median of the
-impulse response function is computed.
 """
 function irf(
-    model::StaticTensorAutoregression, 
+    model::AbstractTensorAutoregression, 
     periods::Integer; 
     α::Real=.05, 
     orth::Bool=false,
-)
+)   
+    if model isa StaticTensorAutoregression
+        irf_type = StaticIRF
+    else
+        irf_type = DynamicIRF
+    end
+
     # moving average representation
-    Ψ = moving_average(coef(model), periods)
+    Ψ = moving_average(model, periods)
 
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
     # confidence bounds
-    (lower, upper) = confidence_bounds(model, periods, α, orth, response)
+    (lower, upper) = confidence_bounds(model, periods, α, orth)
 
-    return StaticIRF(Ψ, lower, upper, orth)
-end
-
-function irf(
-    model::DynamicTensorAutoregression, 
-    periods::Integer; 
-    α::Real=.05, 
-    orth::Bool=false,
-    response::Symbol=:mean
-)
-    # moving average representation
-    Ψ = moving_average(
-        coef(model), 
-        periods, 
-        data(model), 
-        dist(model), 
-        response
-    )
-
-    # orthogonalize
-    orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
-
-    # confidence bounds
-    (lower, upper) = confidence_bounds(model, periods, α, orth, response)
-
-    return DynamicIRF(Ψ, lower, upper, orth)
+    return irf_type(Ψ, lower, upper, orth)
 end
