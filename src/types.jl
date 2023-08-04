@@ -195,22 +195,22 @@ Abstract type for tensor autoregressive model.
 abstract type AbstractTensorAutoregression end
 
 """
-    TensorAutoregression
+    StaticTensorAutoregression <: AbstractTensorAutoregression
 
-Tensor autoregressive model with tensor error distribution `ε` and Kruskal tensor
-representation `A`, potentially dynamic.
+Tensor autoregressive model with tensor error distribution `ε` and static
+Kruskal tensor representation `A`.
 """
-mutable struct TensorAutoregression{
+mutable struct StaticTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
     TA<:AbstractKruskal,
     Tfixed<:NamedTuple
-}
+} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     fixed::Tfixed
-    function TensorAutoregression(
+    function StaticTensorAutoregression(
         y::AbstractArray, 
         ε::AbstractTensorErrorDistribution, 
         A::AbstractKruskal, 
@@ -220,6 +220,7 @@ mutable struct TensorAutoregression{
         n = ndims(y) - 1
         size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        
 
         return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
     end
