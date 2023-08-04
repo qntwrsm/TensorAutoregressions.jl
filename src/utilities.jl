@@ -17,7 +17,6 @@ utilities.jl
         periods, 
         α, 
         orth, 
-        response, 
         samples=100, 
         burn=100, 
         rng=Xoshiro()
@@ -33,7 +32,6 @@ function confidence_bounds(
     periods::Integer,
     α::Real, 
     orth::Bool, 
-    response::Symbol, 
     samples::Integer=100, 
     burn::Integer=100, 
     rng::AbstractRNG=Xoshiro()
@@ -49,11 +47,7 @@ function confidence_bounds(
         fit!(sim)
 
         # moving average representation
-        if coef(model) isa StaticKruskal
-            Ψ[s] = moving_average(coef(sim), periods)
-        else
-            Ψ[s] = moving_average(coef(sim), periods, data(sim), dist(sim), response)
-        end
+        Ψ[s] = moving_average(sim, periods)
 
         # orthogonalize
         orth ? Ψ[s] = orthogonalize(Ψ[s], cov(sim)) : nothing
@@ -73,17 +67,17 @@ function confidence_bounds(
 end
 
 """
-    moving_average(A, n[, y, ε, symbol]) -> Ψ
+    moving_average(model, n) -> Ψ
 
 Moving average, ``MA(∞)``, representation of the tensor autoregressive model
-with Kruskal coefficient tensor `A`, computed up to the `n`th term.
+`model`, computed up to the `n`th term.
 """
-function moving_average(A::StaticKruskal, n::Integer)
-    dims = size(A)
+function moving_average(model::StaticTensorAutoregression, n::Integer)
+    dims = size(coef(model))
     R = length(dims)÷2+1:length(dims)
 
     # matricize Kruskal tensor
-    An = matricize(full(A), R)
+    An = matricize(full(coef(model)), R)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
@@ -94,21 +88,15 @@ function moving_average(A::StaticKruskal, n::Integer)
     return Ψ
 end
 
-function moving_average(
-    A::DynamicKruskal, 
-    n::Integer, 
-    y::AbstractArray, 
-    ε::TensorNormal, 
-    response::Symbol
-)
-    dims = size(A)
+function moving_average(model::DynamicTensorAutoregression, n::Integer)
+    dims = size(coef(model))
     R = length(dims)÷2+1:length(dims)-1
 
     # tensorize identity matrix
     Id = tensorize(I(prod(R)), R, dims[1:end-1])
 
     # matricize Kruskal tensor
-    An = matricize(full(A), R)
+    An = matricize(full(coef(model)), R)
 
     # moving average coefficients
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
@@ -118,11 +106,7 @@ function moving_average(
         # cumulative product
         Λ = cumprod(particles, dims=ndims(particles))
         # uncertainty aggregation
-        if response == :mean
-            λ = dropdims(mean(Λ, dims=2), dims=2)
-        elseif response == :median
-            λ = dropdims(median(Λ, dims=2), dims=2)
-        end
+        λ = dropdims(mean(Λ, dims=2), dims=2)
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
             if h == 1
                 ψh .= Id 
