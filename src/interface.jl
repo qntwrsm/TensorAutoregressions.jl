@@ -45,12 +45,14 @@ function TensorAutoregression(
             [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
+        model = DynamicTensorAutoregression
     else
         A = StaticKruskal(
             similar(y, R), 
             [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
+        model = StaticTensorAutoregression
     end
 
     # instantiate tensor error distribution
@@ -69,7 +71,7 @@ function TensorAutoregression(
         throw(ArgumentError("distribution $dist not supported."))
     end
 
-    return TensorAutoregression(y, ε, A, fixed)
+    return model(y, ε, A, fixed)
 end
 
 """
