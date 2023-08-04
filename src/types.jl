@@ -188,6 +188,13 @@ end
 
 # Tensor autoreggresive model
 """
+    AbstractTensorAutoregression
+
+Abstract type for tensor autoregressive model.
+"""
+abstract type AbstractTensorAutoregression end
+
+"""
     TensorAutoregression
 
 Tensor autoregressive model with tensor error distribution `ε` and Kruskal tensor
