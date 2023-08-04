@@ -282,14 +282,9 @@ end
 Compute forecasts `periods` periods ahead using fitted tensor autoregressive
 model `model`.
 """
-function forecast(model::TensorAutoregression, periods::Integer)
+function forecast(model::StaticTensorAutoregression, periods::Integer)
     dims = size(data(model))
     n = ndims(data(model)) - 1
-
-    # sample dynamic loadings particles
-    if coef(model) isa DynamicKruskal
-        particles = get_particles(data(model), coef(model), dist(model), periods)
-    end
 
     # outer product of Kruskal factors
     U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
@@ -300,8 +295,29 @@ function forecast(model::TensorAutoregression, periods::Integer)
     yT = selectdim(data(model), n+1, last(dims))
     # forecast
     for h = 1:periods, r = 1:rank(model)
-        λ̂ = coef(model) isa StaticKruskal ? loadings(model)[r]^h : mean(prod(particles[r,:,1:h], dims=2))
-        selectdim(forecasts, n+1, h) .= λ̂ * tucker(yT, U[r].^h)
+        selectdim(forecasts, n+1, h) .= loadings(model)[r]^h * tucker(yT, U[r].^h)
+    end
+
+    return forecasts
+end
+
+function forecast(model::DynamicTensorAutoregression, periods::Integer)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # sample dynamic loadings particles
+    particles = get_particles(data(model), coef(model), dist(model), periods)
+
+    # outer product of Kruskal factors
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
+
+    # forecast data using tensor autoregression
+    forecasts = similar(data(model), dims[1:n]..., periods)
+    # last observation
+    yT = selectdim(data(model), n+1, last(dims))
+    # forecast
+    for h = 1:periods, r = 1:rank(model)
+        selectdim(forecasts, n+1, h) .= mean(prod(particles[r,:,1:h], dims=2)) * tucker(yT, U[r].^h)
     end
 
     return forecasts
