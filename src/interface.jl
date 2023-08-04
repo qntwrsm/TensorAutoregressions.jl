@@ -214,7 +214,7 @@ maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
 function fit!(
-    model::TensorAutoregression;
+    model::AbstractTensorAutoregression;
     init_method::NamedTuple=(coef=:data, dist=:data), 
     ϵ::AbstractFloat=1e-4, 
     max_iter::Integer=1000, 
@@ -250,7 +250,7 @@ function fit!(
     δ = Inf
     while δ > ϵ && iter < max_iter
         # update model
-        update!(coef(model), dist(model), data(model), fixed(model))
+        update!(model, fixed(model))
 
         # compute maximum abs change in parameters
         δ = absdiff(model, model_prev)
