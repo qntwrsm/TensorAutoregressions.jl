@@ -258,17 +258,17 @@ mutable struct DynamicTensorAutoregression{
 end
 
 # methods
-data(model::TensorAutoregression) = model.y
-coef(model::TensorAutoregression) = model.A
-dist(model::TensorAutoregression) = model.ε
-fixed(model::TensorAutoregression) = model.fixed 
-resid(model::TensorAutoregression) = resid(dist(model))
-cov(model::TensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
-factors(model::TensorAutoregression) = factors(coef(model))
-loadings(model::TensorAutoregression) = loadings(coef(model))
-rank(model::TensorAutoregression) = rank(coef(model))
-Base.similar(model::TensorAutoregression) = TensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
-function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
+data(model::AbstractTensorAutoregression) = model.y
+coef(model::AbstractTensorAutoregression) = model.A
+dist(model::AbstractTensorAutoregression) = model.ε
+fixed(model::AbstractTensorAutoregression) = model.fixed 
+resid(model::AbstractTensorAutoregression) = resid(dist(model))
+cov(model::AbstractTensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
+factors(model::AbstractTensorAutoregression) = factors(coef(model))
+loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
+rank(model::AbstractTensorAutoregression) = rank(coef(model))
+Base.similar(model::AbstractTensorAutoregression) = typeof(model)(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
+function Base.copyto!(dest::AbstractTensorAutoregression, src::AbstractTensorAutoregression)
     copyto!(data(dest), data(src))
     copyto!(dist(dest), dist(src))
     copyto!(coef(dest), coef(src))
@@ -276,7 +276,7 @@ function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
 
     return dest
 end
-Base.copy(model::TensorAutoregression) = copyto!(similar(model), model)
+Base.copy(model::AbstractTensorAutoregression) = copyto!(similar(model), model)
 
 # Impulse response functions
 """
