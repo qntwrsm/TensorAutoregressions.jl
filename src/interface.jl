@@ -324,7 +324,7 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods; α=.05, orth=false, response=:mean) -> irfs
+    irf(model, periods; α=.05, orth=false[, response=:mean]) -> irfs
 
 Compute impulse response functions `periods` periods ahead and corresponding
 `α`% upper and lower confidence bounds using fitted tensor autoregressive model
@@ -338,26 +338,13 @@ response function is computed. If `response` is `:median`, the median of the
 impulse response function is computed.
 """
 function irf(
-    model::TensorAutoregression, 
+    model::StaticTensorAutoregression, 
     periods::Integer; 
     α::Real=.05, 
     orth::Bool=false,
-    response::Symbol=:mean
 )
     # moving average representation
-    if coef(model) isa StaticKruskal
-        irf_type = StaticIRF
-        Ψ = moving_average(coef(model), periods)
-    else
-        irf_type = DynamicIRF
-        Ψ = moving_average(
-            coef(model), 
-            periods, 
-            data(model), 
-            dist(model), 
-            response
-        )
-    end
+    Ψ = moving_average(coef(model), periods)
 
     # orthogonalize
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
@@ -365,5 +352,30 @@ function irf(
     # confidence bounds
     (lower, upper) = confidence_bounds(model, periods, α, orth, response)
 
-    return irf_type(Ψ, lower, upper, orth)
+    return StaticIRF(Ψ, lower, upper, orth)
+end
+
+function irf(
+    model::DynamicTensorAutoregression, 
+    periods::Integer; 
+    α::Real=.05, 
+    orth::Bool=false,
+    response::Symbol=:mean
+)
+    # moving average representation
+    Ψ = moving_average(
+        coef(model), 
+        periods, 
+        data(model), 
+        dist(model), 
+        response
+    )
+
+    # orthogonalize
+    orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
+
+    # confidence bounds
+    (lower, upper) = confidence_bounds(model, periods, α, orth, response)
+
+    return DynamicIRF(Ψ, lower, upper, orth)
 end
