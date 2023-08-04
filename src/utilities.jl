@@ -29,7 +29,7 @@ estimated using a Monte Carlo simulation with `samples` and a burn-in period
 `burn`.
 """
 function confidence_bounds(
-    model::TensorAutoregression, 
+    model::AbstractTensorAutoregression, 
     periods::Integer,
     α::Real, 
     orth::Bool, 
