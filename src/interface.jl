@@ -306,7 +306,7 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
     n = ndims(data(model)) - 1
 
     # sample dynamic loadings particles
-    particles = get_particles(data(model), coef(model), dist(model), periods)
+    particles = particle_sampler(model, periods)
 
     # outer product of Kruskal factors
     U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
