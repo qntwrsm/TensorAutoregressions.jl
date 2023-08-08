@@ -152,62 +152,31 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    get_particles(y, A, ε, periods) -> particles
+    particle_sampler(model, periods; samples=1000, rng=Xoshiro()) -> particles
 
-Helper function for retrieving forward sampled particles for the dynamic model.
-"""
-function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, periods::Integer)
-    # collapsed state space system
-    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
-    # filter
-    (a, P, v, _, K) = filter(
-        y_star, 
-        Z_star, 
-        intercept(A), 
-        dynamics(A), 
-        cov(A), 
-        a1, 
-        P1
-    )
-    # predict
-    â = dynamics(A) * a[end] + K[end] * v[end] + intercept(A)
-    P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
-
-    # sample particles
-    particles = particle_sampler(
-        â, 
-        P̂, 
-        intercept(A), 
-        dynamics(A), 
-        cov(A), 
-        periods, 
-        1000, 
-        Xoshiro()
-    )
-
-    return particles
-end
-
-"""
-    particle_sampler(a, P, c, T, Q, periods, samples, rng) -> particles
-
-Forward particle sampler of the filtered state `a` with corresponding variance
-`P`, state equation system matrices `T` and `Q`, and state mean adjustment `c`
-with the number of forward periods given by `periods`, using random number
-generator `rng`.
+Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic tensor
+autoregressive model `model`, with the number of forward periods given by
+`periods`, using random number generator `rng`.
 """
 function particle_sampler(
-    a::AbstractVector, 
-    P::AbstractMatrix, 
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    periods::Integer,
-    samples::Integer,
-    rng::AbstractRNG
-)
-    particles = similar(a, length(a), samples, periods)
-    particles[:,:,1] = rand(rng, MvNormal(c + T * a, T * P * T' + Q), samples)
+    model::DynamicTensorAutoregression,
+    periods::Integer;
+    samples::Integer=1000,
+    rng::AbstractRNG=Xoshiro()
+)   
+    # transition coefficients
+    T = dynamics(coef(model))
+    c = intercept(coef(model))
+    Q = cov(coef(model))
+    # filter
+    (a, P, v, _, K) = filter(model)
+    # predict
+    â = T * a[end] + K[end] * v[end] + c
+    P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
+    
+    # particle sampling
+    particles = similar(â, length(â), samples, periods)
+    particles[:,:,1] = rand(rng, MvNormal(â, P̂), samples)
     for h = 2:periods, s = 1:samples
         particles[:,s,h] = rand(rng, MvNormal(c + T * particles[:,s,h-1], Q))
     end
