@@ -216,35 +216,35 @@ function particle_sampler(
 end
 
 """
-    state_space(y, A, ε) -> (y_star, Z_star, a1, P1)
+    state_space(model) -> (y_star, Z_star, a1, P1)
 
-State space form of the collapsed tensor autoregressive model with dynamic
-Kruskal coefficient tensor `A` and tensor error distribution `ε`.
+State space form of the collapsed dynamic tensor autoregressive model `model`.
 """
-function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
-    dims = size(y)
-    n = ndims(y) - 1
+function state_space(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+    Ty = eltype(data(model))
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
 
     # collapsing
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
+    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
     Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
     A_star = tucker(X, transpose.(Cinv))
-    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))) for t = 1:last(dims)-1]
+    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(data(model), n+1, t+1)))) for t = 1:last(dims)-1]
 
     # initial conditions
-    a1 = zeros(eltype(y), rank(A))
-    P1 = Matrix{eltype(y)}(I, rank(A), rank(A))
+    a1 = zeros(Ty, rank(model))
+    P1 = Matrix{Ty}(I, rank(model), rank(model))
 
     return (y_star, Z_star, a1, P1)
 end
