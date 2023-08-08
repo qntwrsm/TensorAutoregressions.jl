@@ -102,7 +102,7 @@ function moving_average(model::DynamicTensorAutoregression, n::Integer)
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = particle_sampler(model, n+1, time=t)
+        particles = particle_sampler(model, n+1, time=t-1)
         # cumulative product
         Λ = cumprod(selectdim(particles, ndims(particles), 2:n+1), dims=ndims(particles))
         # uncertainty aggregation
@@ -155,7 +155,7 @@ end
     particle_sampler(
         model, 
         periods; 
-        time=last(size(data(model))), 
+        time=last(size(coef(model))), 
         samples=1000, 
         rng=Xoshiro()
     ) -> particles
@@ -167,7 +167,7 @@ autoregressive model `model`, with the number of forward periods given by
 function particle_sampler(
     model::DynamicTensorAutoregression,
     periods::Integer;
-    time::Integer=last(size(data(model))),
+    time::Integer=last(size(coef(model))),
     samples::Integer=1000,
     rng::AbstractRNG=Xoshiro()
 )   
@@ -178,12 +178,12 @@ function particle_sampler(
     # filter
     (a, P, v, _, K) = filter(model)
     # predict
-    if time == last(size(data(model)))
+    if time == last(size(coef(model)))
         â = T * a[end] + K[end] * v[end] + c
         P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
-    elseif time < last(size(data(model)))
-        â = a[time]
-        P̂ = P[time]
+    elseif time < last(size(coef(model)))
+        â = a[time+1]
+        P̂ = P[time+1]
     end
     
     # particle sampling
