@@ -17,7 +17,6 @@ utilities.jl
         periods, 
         α, 
         orth, 
-        response, 
         samples=100, 
         burn=100, 
         rng=Xoshiro()
@@ -29,11 +28,10 @@ estimated using a Monte Carlo simulation with `samples` and a burn-in period
 `burn`.
 """
 function confidence_bounds(
-    model::TensorAutoregression, 
+    model::AbstractTensorAutoregression, 
     periods::Integer,
     α::Real, 
     orth::Bool, 
-    response::Symbol, 
     samples::Integer=100, 
     burn::Integer=100, 
     rng::AbstractRNG=Xoshiro()
@@ -49,11 +47,7 @@ function confidence_bounds(
         fit!(sim)
 
         # moving average representation
-        if coef(model) isa StaticKruskal
-            Ψ[s] = moving_average(coef(sim), periods)
-        else
-            Ψ[s] = moving_average(coef(sim), periods, data(sim), dist(sim), response)
-        end
+        Ψ[s] = moving_average(sim, periods)
 
         # orthogonalize
         orth ? Ψ[s] = orthogonalize(Ψ[s], cov(sim)) : nothing
@@ -73,17 +67,17 @@ function confidence_bounds(
 end
 
 """
-    moving_average(A, n[, y, ε, symbol]) -> Ψ
+    moving_average(model, n) -> Ψ
 
 Moving average, ``MA(∞)``, representation of the tensor autoregressive model
-with Kruskal coefficient tensor `A`, computed up to the `n`th term.
+`model`, computed up to the `n`th term.
 """
-function moving_average(A::StaticKruskal, n::Integer)
-    dims = size(A)
+function moving_average(model::StaticTensorAutoregression, n::Integer)
+    dims = size(coef(model))
     R = length(dims)÷2+1:length(dims)
 
     # matricize Kruskal tensor
-    An = matricize(full(A), R)
+    An = matricize(full(coef(model)), R)
 
     # moving average coefficients
     Ψ = zeros(dims..., n+1)
@@ -94,35 +88,25 @@ function moving_average(A::StaticKruskal, n::Integer)
     return Ψ
 end
 
-function moving_average(
-    A::DynamicKruskal, 
-    n::Integer, 
-    y::AbstractArray, 
-    ε::TensorNormal, 
-    response::Symbol
-)
-    dims = size(A)
+function moving_average(model::DynamicTensorAutoregression, n::Integer)
+    dims = size(coef(model))
     R = length(dims)÷2+1:length(dims)-1
 
     # tensorize identity matrix
-    Id = tensorize(I(prod(R)), R, dims[1:end-1])
+    Id = tensorize(I(prod(dims[R])), R, dims[1:end-1])
 
     # matricize Kruskal tensor
-    An = matricize(full(A), R)
+    An = matricize(full(coef(model)), R)
 
     # moving average coefficients
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = get_particles(selectdim(y, ndims(y), 1:t+1), A, ε, n)
+        particles = particle_sampler(model, n+1, time=t-1)
         # cumulative product
-        Λ = cumprod(particles, dims=ndims(particles))
+        Λ = cumprod(selectdim(particles, ndims(particles), 2:n+1), dims=ndims(particles))
         # uncertainty aggregation
-        if response == :mean
-            λ = dropdims(mean(Λ, dims=2), dims=2)
-        elseif response == :median
-            λ = dropdims(median(Λ, dims=2), dims=2)
-        end
+        λ = dropdims(mean(Λ, dims=2), dims=2)
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
             if h == 1
                 ψh .= Id 
@@ -168,62 +152,43 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    get_particles(y, A, ε, periods) -> particles
+    particle_sampler(
+        model, 
+        periods; 
+        time=last(size(coef(model))), 
+        samples=1000, 
+        rng=Xoshiro()
+    ) -> particles
 
-Helper function for retrieving forward sampled particles for the dynamic model.
-"""
-function get_particles(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal, periods::Integer)
-    # collapsed state space system
-    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
-    # filter
-    (a, P, v, _, K) = filter(
-        y_star, 
-        Z_star, 
-        intercept(A), 
-        dynamics(A), 
-        cov(A), 
-        a1, 
-        P1
-    )
-    # predict
-    â = dynamics(A) * a[end] + K[end] * v[end] + intercept(A)
-    P̂ = dynamics(A) * P[end] * (dynamics(A) - K[end] * Z_star[end])' + cov(A)
-
-    # sample particles
-    particles = particle_sampler(
-        â, 
-        P̂, 
-        intercept(A), 
-        dynamics(A), 
-        cov(A), 
-        periods, 
-        1000, 
-        Xoshiro()
-    )
-
-    return particles
-end
-
-"""
-    particle_sampler(a, P, c, T, Q, periods, samples, rng) -> particles
-
-Forward particle sampler of the filtered state `a` with corresponding variance
-`P`, state equation system matrices `T` and `Q`, and state mean adjustment `c`
-with the number of forward periods given by `periods`, using random number
-generator `rng`.
+Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic tensor
+autoregressive model `model`, with the number of forward periods given by
+`periods` starting from `time` and using random number generator `rng`.
 """
 function particle_sampler(
-    a::AbstractVector, 
-    P::AbstractMatrix, 
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    periods::Integer,
-    samples::Integer,
-    rng::AbstractRNG
-)
-    particles = similar(a, length(a), samples, periods)
-    particles[:,:,1] = rand(rng, MvNormal(c + T * a, T * P * T' + Q), samples)
+    model::DynamicTensorAutoregression,
+    periods::Integer;
+    time::Integer=last(size(coef(model))),
+    samples::Integer=1000,
+    rng::AbstractRNG=Xoshiro()
+)   
+    # transition coefficients
+    T = dynamics(coef(model))
+    c = intercept(coef(model))
+    Q = cov(coef(model))
+    # filter
+    (a, P, v, _, K) = filter(model)
+    # predict
+    if time == last(size(coef(model)))
+        â = T * a[end] + K[end] * v[end] + c
+        P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
+    elseif time < last(size(coef(model)))
+        â = a[time+1]
+        P̂ = P[time+1]
+    end
+    
+    # particle sampling
+    particles = similar(â, length(â), samples, periods)
+    particles[:,:,1] = rand(rng, MvNormal(â, P̂), samples)
     for h = 2:periods, s = 1:samples
         particles[:,s,h] = rand(rng, MvNormal(c + T * particles[:,s,h-1], Q))
     end
@@ -232,56 +197,54 @@ function particle_sampler(
 end
 
 """
-    state_space(y, A, ε) -> (y_star, Z_star, a1, P1)
+    state_space(model) -> (y_star, Z_star, a1, P1)
 
-State space form of the collapsed tensor autoregressive model with dynamic
-Kruskal coefficient tensor `A` and tensor error distribution `ε`.
+State space form of the collapsed dynamic tensor autoregressive model `model`.
 """
-function state_space(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
-    dims = size(y)
-    n = ndims(y) - 1
+function state_space(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+    Ty = eltype(data(model))
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
 
     # collapsing
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
+    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
     Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
     A_star = tucker(X, transpose.(Cinv))
-    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(y, n+1, t+1)))) for t = 1:last(dims)-1]
+    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(data(model), n+1, t+1)))) for t = 1:last(dims)-1]
 
     # initial conditions
-    a1 = zeros(eltype(y), rank(A))
-    P1 = Matrix{eltype(y)}(I, rank(A), rank(A))
+    a1 = zeros(Ty, rank(model))
+    P1 = Matrix{Ty}(I, rank(model), rank(model))
 
     return (y_star, Z_star, a1, P1)
 end
 
 """
-    filter(y, Z, c, T, Q, a1, P1) -> (a, P, v, F, K)
+    filter(model) -> (a, P, v, F, K)
 
-Collapsed Kalman filter for the dynamic tensor autoregressive model with system
-matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial conditions
-`a1` and `P1`. Returns the filtered state `a`, covariance `P`, forecast error
-`v`, forecast error variance `F`, and Kalman gain `K`.
+Collapsed Kalman filter for the dynamic tensor autoregressive model `model`.
+Returns the filtered state `a`, covariance `P`, forecast error `v`, forecast
+error variance `F`, and Kalman gain `K`.
 """
-function filter(
-    y::AbstractVector, 
-    Z::AbstractVector,
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    a1::AbstractVector, 
-    P1::AbstractMatrix
-)
+function filter(model::DynamicTensorAutoregression)
+    # collapsed state space system
+    (y, Z, a1, P1) = state_space(model)
+    T = dynamics(coef(model))
+    c = intercept(coef(model))
+    Q = cov(coef(model))
+
+    # initialize filter output
     a = similar(y, typeof(a1))
     P = similar(y, typeof(P1))
     v = similar(y)
@@ -312,25 +275,20 @@ function filter(
 end
 
 """
-    smoother(y, Z, c, T, Q, a1, P1) -> (α̂, V, Γ)
+    smoother(model) -> (α̂, V, Γ)
 
-Collapsed Kalman smoother for the dynamic tensor autoregressive model with
-system matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial
-conditions `a1` and `P1`. Returns the smoothed state `α̂`, covariance `V`, and
-autocovariance `Γ`.
+Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`.
+Returns the smoothed state `α̂`, covariance `V`, and autocovariance `Γ`.
 """
-function smoother(
-    y::AbstractVector, 
-    Z::AbstractVector,
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    a1::AbstractVector, 
-    P1::AbstractMatrix,
-)
-    # filter
-    (a, P, v, F, K) = filter(y, Z, c, T, Q, a1, P1)
+function smoother(model::DynamicTensorAutoregression)
+    # collapsed state space system
+    (y, Z, a1, P1) = state_space(model)
+    T = dynamics(coef(model))
 
+    # filter
+    (a, P, v, F, K) = filter(model)
+
+    # initialize smoother output
     α̂ = similar(a)
     V = similar(P)
     Γ = similar(P, length(y)-1)

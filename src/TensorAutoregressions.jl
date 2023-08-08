@@ -26,10 +26,9 @@ import Statistics: cov
 
 # Makie backend and theme
 CairoMakie.activate!()
-set_theme!(theme_minimal())
 
 export
-    # main type + constructor
+    # constructor
     TensorAutoregression,
 
     # interface methods

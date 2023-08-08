@@ -188,25 +188,32 @@ end
 
 # Tensor autoreggresive model
 """
-    TensorAutoregression
+    AbstractTensorAutoregression
 
-Tensor autoregressive model with tensor error distribution `ε` and Kruskal tensor
-representation `A`, potentially dynamic.
+Abstract type for tensor autoregressive model.
 """
-mutable struct TensorAutoregression{
+abstract type AbstractTensorAutoregression end
+
+"""
+    StaticTensorAutoregression <: AbstractTensorAutoregression
+
+Tensor autoregressive model with tensor error distribution `ε` and static
+Kruskal tensor representation `A`.
+"""
+mutable struct StaticTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
-    TA<:AbstractKruskal,
+    TA<:StaticKruskal,
     Tfixed<:NamedTuple
-}
+} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     fixed::Tfixed
-    function TensorAutoregression(
+    function StaticTensorAutoregression(
         y::AbstractArray, 
         ε::AbstractTensorErrorDistribution, 
-        A::AbstractKruskal, 
+        A::StaticKruskal, 
         fixed::NamedTuple
     )
         dims = size(y)
@@ -218,18 +225,50 @@ mutable struct TensorAutoregression{
     end
 end
 
+"""
+    DynamicTensorAutoregression <: AbstractTensorAutoregression
+
+Tensor autoregressive model with tensor error distribution `ε` and dynamic
+Kruskal tensor representation `A`.
+"""
+mutable struct DynamicTensorAutoregression{
+    Ty<:AbstractArray, 
+    Tε<:AbstractTensorErrorDistribution,
+    TA<:DynamicKruskal,
+    Tfixed<:NamedTuple
+} <: AbstractTensorAutoregression
+    y::Ty
+    ε::Tε
+    A::TA
+    fixed::Tfixed
+    function DynamicTensorAutoregression(
+        y::AbstractArray, 
+        ε::AbstractTensorErrorDistribution, 
+        A::DynamicKruskal, 
+        fixed::NamedTuple
+    )
+        dims = size(y)
+        n = ndims(y) - 1
+        size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
+        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        ε isa WhiteNoise && throw(ArgumentError("dynamic model with white noise error not supported."))
+
+        return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
+    end
+end
+
 # methods
-data(model::TensorAutoregression) = model.y
-coef(model::TensorAutoregression) = model.A
-dist(model::TensorAutoregression) = model.ε
-fixed(model::TensorAutoregression) = model.fixed 
-resid(model::TensorAutoregression) = resid(dist(model))
-cov(model::TensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
-factors(model::TensorAutoregression) = factors(coef(model))
-loadings(model::TensorAutoregression) = loadings(coef(model))
-rank(model::TensorAutoregression) = rank(coef(model))
-Base.similar(model::TensorAutoregression) = TensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
-function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
+data(model::AbstractTensorAutoregression) = model.y
+coef(model::AbstractTensorAutoregression) = model.A
+dist(model::AbstractTensorAutoregression) = model.ε
+fixed(model::AbstractTensorAutoregression) = model.fixed 
+resid(model::AbstractTensorAutoregression) = resid(dist(model))
+cov(model::AbstractTensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
+factors(model::AbstractTensorAutoregression) = factors(coef(model))
+loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
+rank(model::AbstractTensorAutoregression) = rank(coef(model))
+Base.similar(model::AbstractTensorAutoregression) = typeof(model)(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
+function Base.copyto!(dest::AbstractTensorAutoregression, src::AbstractTensorAutoregression)
     copyto!(data(dest), data(src))
     copyto!(dist(dest), dist(src))
     copyto!(coef(dest), coef(src))
@@ -237,7 +276,7 @@ function Base.copyto!(dest::TensorAutoregression, src::TensorAutoregression)
 
     return dest
 end
-Base.copy(model::TensorAutoregression) = copyto!(similar(model), model)
+Base.copy(model::AbstractTensorAutoregression) = copyto!(similar(model), model)
 
 # Impulse response functions
 """

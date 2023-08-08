@@ -16,7 +16,7 @@ plotting.jl
 
 Plot the time series data, with optionally specified `labels` and `time` index.
 """
-function data_plot(model::TensorAutoregression)
+function data_plot(model::AbstractTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -68,7 +68,7 @@ function data_plot(model::TensorAutoregression)
     return fig
 end
 
-function data_plot(model::TensorAutoregression, labels, time)
+function data_plot(model::AbstractTensorAutoregression, labels, time)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 

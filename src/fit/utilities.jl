@@ -13,37 +13,28 @@ utilities.jl
 """
     loglike(model) -> ll
 
-Wrapper for evaluate log-likelihood of the tensor autoregressive model `model`.
+Evaluate log-likelihood of the tensor autoregressive model `model`.
 """
-loglike(model::TensorAutoregression) = loglike(data(model), coef(model), dist(model))
+function loglike(model::StaticTensorAutoregression)
+    dist(model) isa WhiteNoise || error("Log-likelihood not available for white noise error distribution.")
 
-"""
-    loglike(y, A, ε) -> ll
-
-Evaluate log-likelihood of the tensor autoregressive model with Kruskal
-coefficient tensor `A` and tensor error distribution `ε` for the tensor
-autoregressive model given data `y`.
-"""
-loglike(y::AbstractArray, A::StaticKruskal, ε::WhiteNoise) = error("Log-likelihood not available for white noise error distribution.")
-
-function loglike(y::AbstractArray, A::StaticKruskal, ε::TensorNormal)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
+    Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -54,44 +45,34 @@ function loglike(y::AbstractArray, A::StaticKruskal, ε::TensorNormal)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
     for t = 1:last(dims)-1
-        et = selectdim(Z, n+1, t) - loadings(A) .* selectdim(X, n+1, t)
+        et = selectdim(Z, n+1, t) - loadings(model) .* selectdim(X, n+1, t)
         ll -= 0.5 * norm(et)^2
     end
 
     return ll
 end
 
-function loglike(y::AbstractArray, A::DynamicKruskal, ε::TensorNormal)
-    dims = size(y)
-    n = ndims(y) - 1
+function loglike(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
-    # collapsed state space system
-    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
     # filter
-    (_, _, v, F, _) = filter(
-        y_star, 
-        Z_star,
-        intercept(A),
-        dynamics(A), 
-        cov(A), 
-        a1, 
-        P1
-    )
+    (_, _, v, F, _) = filter(model)
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
     Cinv = [inv(C[i].L) for i = 1:n]
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
 
     # scaling
     S = [Cinv[i] * U[i] for i = 1:n]
     
     # dependent variable and regressor
-    Z = tucker(selectdim(y, n+1, 2:last(dims)), Cinv)
-    X = tucker(selectdim(y, n+1, 1:last(dims)-1), S)
+    Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv)
+    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -137,7 +118,7 @@ covariance matrix from an inverse Wishart distribution.
 When `method` is set to `:none` no initialization is performed and model is
 assumed to have been initialized manually before fitting.
 """
-function init!(model::TensorAutoregression, method::NamedTuple)
+function init!(model::AbstractTensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
     if method.coef != :none
         init!(
@@ -361,7 +342,7 @@ function absdiff(A::DynamicKruskal, A_prev::DynamicKruskal)
 
     return max(δ_factors, δ_dynamics, δ_cov)
 end
-function absdiff(model::TensorAutoregression, model_prev::TensorAutoregression)
+function absdiff(model::AbstractTensorAutoregression, model_prev::AbstractTensorAutoregression)
     δ_coef = absdiff(coef(model), coef(model_prev))
     δ_dist = absdiff(dist(model), dist(model_prev))
 

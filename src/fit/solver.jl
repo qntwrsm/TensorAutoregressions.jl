@@ -11,13 +11,38 @@ solver.jl
 =#
 
 """
-    update!(A, ε, y, fixed)
+    update!(model)
+
+Update parameters of tensor autoregression `model` using an alternating least
+squares (ALS) solve. Wrapper to invoke multiple dispatch over static and dynamic
+tensor autoregressions.
+"""
+update!(model::StaticTensorAutoregression) = als!(coef(model), dist(model), data(model), fixed(model))
+function update!(model::DynamicTensorAutoregression)
+    # E-step
+    # smoother
+    (α̂, V, Γ) = smoother(model)
+    loadings(model) .= hcat(α̂...)
+    σ̂ = vec(vcat(V...))
+    γ̂ = vec(vcat(Γ...))
+
+    # M-step
+    update_transition!(coef(model), σ̂, γ̂, get(fixed(model), :coef, NamedTuple()))
+    als!(coef(model), dist(model), data(model), σ̂, fixed(model))
+
+    return nothing
+end
+
+
+"""
+    als!(A, ε, y, fixed[, σ̂])
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
-tensor autoregressive model based on data `y`, with fixed parameters indicated
-by `fixed`.
+tensor autoregressive model based on data `y` and smoothed loading variance `σ̂`
+when `A` is dynamic, with fixed parameters indicated by `fixed`, using an
+alternating least squares (ALS) solve.
 """
-function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTuple)
+function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -81,7 +106,7 @@ function update!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::Name
     return nothing
 end
 
-function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
+function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -176,100 +201,12 @@ function update!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Na
     return nothing
 end
 
-function update!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, fixed::NamedTuple)
-    # E-step
-    # collapsed state space system
-    (y_star, Z_star, a1, P1) = state_space(y, A, ε)
-    # smoother
-    (α̂, V, Γ) = smoother(y_star, Z_star, intercept(A), dynamics(A), cov(A), a1, P1)
-    loadings(A) .= hcat(α̂...)
-    σ̂ = vec(vcat(V...))
-    γ̂ = vec(vcat(Γ...))
-
-    # M-step
-    update_dynamic!(A, σ̂, γ̂, get(fixed, :coef, NamedTuple()))
-    update_static!(A, ε, y, σ̂, fixed)
-
-    return nothing
-end
-
-"""
-    update_factor!(u, w, P, scale)
-
-Update and normalize factor `u` using regression based on projection matrix `P`
-and companion factor `w`.
-"""
-function update_factor!(u::AbstractVecOrMat, w::AbstractVecOrMat, P::AbstractMatrix, scale::Real)
-    # update factor
-    mul!(u, P, w, scale, zero(eltype(u)))
-    # normalize
-    u .*= inv(norm(u)) 
-
-    return nothing
-end
-
-"""
-    update_dynamic!(A, σ̂, γ̂, fixed)
-
-Update dynamics of dynamic Kruskal coefficient tensor `A` using smoothed
-loadings variance `σ̂`, and autocovariance `γ̂`, with fixed parameters indicated
-by `fixed`.
-"""
-function update_dynamic!(
-    A::DynamicKruskal, 
-    σ̂::AbstractVector, 
-    γ̂::AbstractVector,
-    fixed::NamedTuple
-)
-    # lags and leads
-    λ̂_lag = @view loadings(A)[1:end-1]
-    λ̂_lead = @view loadings(A)[2:end]
-    σ̂_lag = @view σ̂[1:end-1]
-    σ̂_lead = @view σ̂[2:end]
-
-    # second moments
-    φ_lag = σ̂_lag + abs2.(λ̂_lag)
-    φ_lead = σ̂_lead + abs2.(λ̂_lead)
-    φ_cross = γ̂ + λ̂_lead .* λ̂_lag
-
-    # objective closures
-    f_intercept(x) = x^2 - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
-    function f_dynamics(x)
-        scale = one(x) - x^2
-        α = intercept(A)[1]
-        c = mean(φ_lead) + α^2 - 2 * α * mean(λ̂_lead)
-        f = c + 2 * (α * mean(λ̂_lag) - mean(φ_cross)) * x + mean(φ_lag) * x^2
-
-        return log(scale) + f * inv(scale)
-    end
-
-    # update dynamics
-    if !haskey(fixed, :dynamics)
-        res = optimize(f_dynamics, 0.0, 1.0)
-        dynamics(A) .= Optim.minimizer(res)
-    end
-    if !haskey(fixed, :intercept)
-        res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
-        intercept(A) .= Optim.minimizer(res)
-    end
-    cov(A).data .= I - dynamics(A) * dynamics(A)'
-
-    return nothing
-end
-
-"""
-    update_static!(A, ε, y. σ̂, fixed)
-
-Update static factors of dynamic Kruskal coefficient tensor `A` and tensor error
-distribution `ε` based on data `y` and smoothed loading variance `σ̂`, with
-fixed parameters indicated by `fixed`.
-"""
-function update_static!(
+function als!(
     A::DynamicKruskal, 
     ε::TensorNormal, 
     y::AbstractArray, 
-    σ̂::AbstractVector,
-    fixed::NamedTuple
+    fixed::NamedTuple,
+    σ̂::AbstractVector
 )
     dims = size(y)
     n = ndims(y) - 1
@@ -359,6 +296,70 @@ function update_static!(
 
     # update residuals
     resid(ε) .= y_lead .- reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U)
+
+    return nothing
+end
+
+"""
+    update_transition!(A, σ̂, γ̂, fixed)
+
+Update transition dynamics of dynamic Kruskal coefficient tensor `A` using
+smoothed loadings variance `σ̂`, and autocovariance `γ̂`, with fixed parameters
+indicated by `fixed`.
+"""
+function update_transition!(
+    A::DynamicKruskal, 
+    σ̂::AbstractVector, 
+    γ̂::AbstractVector,
+    fixed::NamedTuple
+)
+    # lags and leads
+    λ̂_lag = @view loadings(A)[1:end-1]
+    λ̂_lead = @view loadings(A)[2:end]
+    σ̂_lag = @view σ̂[1:end-1]
+    σ̂_lead = @view σ̂[2:end]
+
+    # second moments
+    φ_lag = σ̂_lag + abs2.(λ̂_lag)
+    φ_lead = σ̂_lead + abs2.(λ̂_lead)
+    φ_cross = γ̂ + λ̂_lead .* λ̂_lag
+
+    # objective closures
+    f_intercept(x) = x^2 - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
+    function f_dynamics(x)
+        scale = one(x) - x^2
+        α = intercept(A)[1]
+        c = mean(φ_lead) + α^2 - 2 * α * mean(λ̂_lead)
+        f = c + 2 * (α * mean(λ̂_lag) - mean(φ_cross)) * x + mean(φ_lag) * x^2
+
+        return log(scale) + f * inv(scale)
+    end
+
+    # update dynamics
+    if !haskey(fixed, :dynamics)
+        res = optimize(f_dynamics, 0.0, 1.0)
+        dynamics(A) .= Optim.minimizer(res)
+    end
+    if !haskey(fixed, :intercept)
+        res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
+        intercept(A) .= Optim.minimizer(res)
+    end
+    cov(A).data .= I - dynamics(A) * dynamics(A)'
+
+    return nothing
+end
+
+"""
+    update_factor!(u, w, P, scale)
+
+Update and normalize factor `u` using regression based on projection matrix `P`
+and companion factor `w`.
+"""
+function update_factor!(u::AbstractVecOrMat, w::AbstractVecOrMat, P::AbstractMatrix, scale::Real)
+    # update factor
+    mul!(u, P, w, scale, zero(eltype(u)))
+    # normalize
+    u .*= inv(norm(u)) 
 
     return nothing
 end
