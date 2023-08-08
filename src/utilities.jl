@@ -250,22 +250,20 @@ function state_space(model::DynamicTensorAutoregression)
 end
 
 """
-    filter(y, Z, c, T, Q, a1, P1) -> (a, P, v, F, K)
+    filter(model) -> (a, P, v, F, K)
 
-Collapsed Kalman filter for the dynamic tensor autoregressive model with system
-matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial conditions
-`a1` and `P1`. Returns the filtered state `a`, covariance `P`, forecast error
-`v`, forecast error variance `F`, and Kalman gain `K`.
+Collapsed Kalman filter for the dynamic tensor autoregressive model `model`.
+Returns the filtered state `a`, covariance `P`, forecast error `v`, forecast
+error variance `F`, and Kalman gain `K`.
 """
-function filter(
-    y::AbstractVector, 
-    Z::AbstractVector,
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    a1::AbstractVector, 
-    P1::AbstractMatrix
-)
+function filter(model::DynamicTensorAutoregression)
+    # collapsed state space system
+    (y, Z, a1, P1) = state_space(model)
+    T = dynamics(coef(model))
+    c = intercept(coef(model))
+    Q = cov(coef(model))
+
+    # initialize filter output
     a = similar(y, typeof(a1))
     P = similar(y, typeof(P1))
     v = similar(y)
@@ -296,25 +294,20 @@ function filter(
 end
 
 """
-    smoother(y, Z, c, T, Q, a1, P1) -> (α̂, V, Γ)
+    smoother(model) -> (α̂, V, Γ)
 
-Collapsed Kalman smoother for the dynamic tensor autoregressive model with
-system matrices `Z`, `T`, and `Q`, state mean adjustment `c`, and initial
-conditions `a1` and `P1`. Returns the smoothed state `α̂`, covariance `V`, and
-autocovariance `Γ`.
+Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`.
+Returns the smoothed state `α̂`, covariance `V`, and autocovariance `Γ`.
 """
-function smoother(
-    y::AbstractVector, 
-    Z::AbstractVector,
-    c::AbstractVector, 
-    T::AbstractMatrix, 
-    Q::AbstractMatrix, 
-    a1::AbstractVector, 
-    P1::AbstractMatrix,
-)
-    # filter
-    (a, P, v, F, K) = filter(y, Z, c, T, Q, a1, P1)
+function smoother(model::DynamicTensorAutoregression)
+    # collapsed state space system
+    (y, Z, a1, P1) = state_space(model)
+    T = dynamics(coef(model))
 
+    # filter
+    (a, P, v, F, K) = filter(model)
+
+    # initialize smoother output
     α̂ = similar(a)
     V = similar(P)
     Γ = similar(P, length(y)-1)
