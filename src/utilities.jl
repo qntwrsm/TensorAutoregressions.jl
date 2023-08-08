@@ -102,9 +102,9 @@ function moving_average(model::DynamicTensorAutoregression, n::Integer)
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = particle_sampler(model, n, time=t)
+        particles = particle_sampler(model, n+1, time=t)
         # cumulative product
-        Λ = cumprod(particles, dims=ndims(particles))
+        Λ = cumprod(selectdim(particles, ndims(particles), 2:n+1), dims=ndims(particles))
         # uncertainty aggregation
         λ = dropdims(mean(Λ, dims=2), dims=2)
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
