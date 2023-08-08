@@ -220,7 +220,6 @@ function fit!(
     max_iter::Integer=1000, 
     verbose::Bool=false
 )
-    rank(model) == 1 || error("general rank R model fitting not implemented.")
     keys(init_method) ⊇ (:coef, :dist) || error("init_method must be a NamedTuple with keys :coef and :dist.")
 
     # model summary
