@@ -102,7 +102,7 @@ function moving_average(model::DynamicTensorAutoregression, n::Integer)
     Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = get_particles(selectdim(y, ndims(y), 1:t+1), A, ε, n)
+        particles = particle_sampler(model, n, time=t)
         # cumulative product
         Λ = cumprod(particles, dims=ndims(particles))
         # uncertainty aggregation
@@ -152,15 +152,22 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    particle_sampler(model, periods; samples=1000, rng=Xoshiro()) -> particles
+    particle_sampler(
+        model, 
+        periods; 
+        time=last(size(data(model))), 
+        samples=1000, 
+        rng=Xoshiro()
+    ) -> particles
 
 Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic tensor
 autoregressive model `model`, with the number of forward periods given by
-`periods`, using random number generator `rng`.
+`periods` starting from `time` and using random number generator `rng`.
 """
 function particle_sampler(
     model::DynamicTensorAutoregression,
     periods::Integer;
+    time::Integer=last(size(data(model))),
     samples::Integer=1000,
     rng::AbstractRNG=Xoshiro()
 )   
@@ -171,8 +178,13 @@ function particle_sampler(
     # filter
     (a, P, v, _, K) = filter(model)
     # predict
-    â = T * a[end] + K[end] * v[end] + c
-    P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
+    if time == last(size(data(model)))
+        â = T * a[end] + K[end] * v[end] + c
+        P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
+    elseif time < last(size(data(model)))
+        â = a[time]
+        P̂ = P[time]
+    end
     
     # particle sampling
     particles = similar(â, length(â), samples, periods)
