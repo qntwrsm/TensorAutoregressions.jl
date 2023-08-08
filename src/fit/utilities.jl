@@ -118,7 +118,7 @@ covariance matrix from an inverse Wishart distribution.
 When `method` is set to `:none` no initialization is performed and model is
 assumed to have been initialized manually before fitting.
 """
-function init!(model::TensorAutoregression, method::NamedTuple)
+function init!(model::AbstractTensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
     if method.coef != :none
         init!(
@@ -342,7 +342,7 @@ function absdiff(A::DynamicKruskal, A_prev::DynamicKruskal)
 
     return max(δ_factors, δ_dynamics, δ_cov)
 end
-function absdiff(model::TensorAutoregression, model_prev::TensorAutoregression)
+function absdiff(model::AbstractTensorAutoregression, model_prev::AbstractTensorAutoregression)
     δ_coef = absdiff(coef(model), coef(model_prev))
     δ_dist = absdiff(dist(model), dist(model_prev))
 
