@@ -28,7 +28,7 @@ function update!(model::DynamicTensorAutoregression)
 
     # M-step
     update_transition!(coef(model), σ̂, γ̂, get(fixed(model), :coef, NamedTuple()))
-    als!(coef(model), dist(model), data(model), σ̂, fixed(model))
+    als!(coef(model), dist(model), data(model), fixed(model), σ̂)
 
     return nothing
 end
@@ -50,54 +50,71 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTu
     fixed_coef = get(fixed, :coef, NamedTuple())
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [[factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n] for r = 1:rank(A)]
 
     # lag and lead variables
     y_lead = selectdim(y, n+1, 2:last(dims))
     y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
-    if !haskey(fixed_coef, :factors)
-        # loop through modes
-        for k = 1:n
-            m = setdiff(1:n, k)
-            # matricize dependent variable along k-th mode
-            Yk = matricize(y_lead, k)
-            # matricize regressor along k-th mode
-            X = tucker(y_lag, U[m], m)
-            Xk = matricize(X, k)
+    # initialize residuals
+    resid(ε) .= y_lead
 
-            # Gram matrix
-            G = Xk * Xk'
-            # moment matrix
-            M = Yk * Xk'
-
-            # update factor k
-            update_factor!(factors(A)[k], factors(A)[k+n], G \ M', inv(loadings(A)[1]))
-            # update factor k+n
-            update_factor!(
-                factors(A)[k+n], 
-                factors(A)[k], 
-                M, 
-                inv(loadings(A)[1] * dot(factors(A)[k], G, factors(A)[k]))
-            )
-
-            # update outer product of Kruskal factors
-            U[k] = factors(A)[k+n] * factors(A)[k]'
+    # loop through ranks
+    for r = 1:rank(A)
+        s = setdiff(1:rank(A), r)
+        # dependent variable tensor
+        Zr = copy(y_lead)
+        for i in s
+            Xi = tucker(y_lag, U[i])
+            Zr .-= loadings(A)[i] .* Xi
         end
+
+        if !haskey(fixed_coef, :factors)
+            # loop through modes
+            for k = 1:n
+                m = setdiff(1:n, k)
+                # matricize dependent variable along k-th mode
+                Zkr = matricize(Zr, k) 
+                # matricize regressor along k-th mode
+                Xr = tucker(y_lag, U[r][m], m)
+                Xkr = matricize(Xr, k)
+
+                # Gram matrix
+                G = Xkr * Xkr'
+                # moment matrix
+                M = Zkr * Xkr'
+
+                # update factor k
+                update_factor!(
+                    factors(A)[r][k], 
+                    factors(A)[r][k+n], 
+                    G \ M', 
+                    inv(loadings(A)[r])
+                )
+                # update factor k+n
+                update_factor!(
+                    factors(A)[r][k+n], 
+                    factors(A)[r][k], 
+                    M, 
+                    inv(loadings(A)[r] * dot(factors(A)[r][k], G, factors(A)[r][k]))
+                )
+
+                # update outer product of Kruskal factors
+                U[r][k] = factors(A)[r][k+n] * factors(A)[r][k]'
+            end
+        end
+
+        # regressor tensor
+        Xr = tucker(y_lag, U[r])
+
+        # update loading
+        if !haskey(fixed_coef, :loadings)
+            loadings(A)[r] = dot(Zr, Xr) / norm(Xr)^2
+        end
+
+        # update residuals
+        resid(ε) .-= loadings(A)[r] .* Xr
     end
-
-    # regressor tensor
-    X = tucker(y_lag, U)
-
-    # update loading
-    if !haskey(fixed_coef, :loadings)
-        f(x) = norm(y_lead)^2 - 2 * dot(y_lead, X) * x + norm(X)^2 * x^2 
-        res = optimize(f, -1.0, 1.0)
-        loadings(A)[1] = Optim.minimizer(res)
-    end
-
-    # update residuals
-    resid(ε) .= y_lead .- loadings(A)[1] .* X
 
     # update covariance
     E = matricize(resid(ε), 1:n)
