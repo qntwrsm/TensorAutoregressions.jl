@@ -17,6 +17,20 @@ Wrapper for objective function evaluation for tensor autoregressive model
 `model`.
 """
 objective(model::AbstractTensorAutoregression) = loglike(model)
+function objective(model::StaticTensorAutoregression)
+    if dist(model) isa WhiteNoise
+        return sse(model)
+    else
+        return loglike(model)
+    end
+end
+
+"""
+    sse(model) -> sse
+
+Evaluate sum of squared errors of the tensor autoregressive model `model`.
+"""
+sse(model::AbstractTensorAutoregression) = norm(resid(model))^2
 
 """
     loglike(model) -> ll
