@@ -11,6 +11,14 @@ utilities.jl
 =#
 
 """
+    objective(model) -> f
+
+Wrapper for objective function evaluation for tensor autoregressive model
+`model`.
+"""
+objective(model::AbstractTensorAutoregression) = loglike(model)
+
+"""
     loglike(model) -> ll
 
 Evaluate log-likelihood of the tensor autoregressive model `model`.
