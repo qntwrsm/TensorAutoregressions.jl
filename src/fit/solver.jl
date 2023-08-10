@@ -59,7 +59,6 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTu
     # initialize residuals
     resid(ε) .= y_lead
 
-    # loop through ranks
     for r = 1:rank(A)
         s = setdiff(1:rank(A), r)
         # dependent variable tensor
@@ -70,7 +69,6 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTu
         end
 
         if !haskey(fixed_coef, :factors)
-            # loop through modes
             for k = 1:n
                 m = setdiff(1:n, k)
                 # matricize dependent variable along k-th mode
@@ -86,21 +84,21 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray, fixed::NamedTu
 
                 # update factor k
                 update_factor!(
-                    factors(A)[r][k], 
-                    factors(A)[r][k+n], 
+                    factors(A)[k][:,r], 
+                    factors(A)[k+n][:,r], 
                     G \ M', 
                     inv(loadings(A)[r])
                 )
                 # update factor k+n
                 update_factor!(
-                    factors(A)[r][k+n], 
-                    factors(A)[r][k], 
+                    factors(A)[k+n][:,r], 
+                    factors(A)[k][:,r], 
                     M, 
-                    inv(loadings(A)[r] * dot(factors(A)[r][k], G, factors(A)[r][k]))
+                    inv(loadings(A)[r] * dot(factors(A)[k][:,r], G, factors(A)[k][:,r]))
                 )
 
                 # update outer product of Kruskal factors
-                U[r][k] = factors(A)[r][k+n] * factors(A)[r][k]'
+                U[r][k] = factors(A)[k+n][:,r] * factors(A)[k][:,r]'
             end
         end
 
@@ -139,81 +137,90 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray, fixed::Named
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [factors(A)[i+n] * factors(A)[i]' for i = 1:n]
+    U = [[factors(A)[i+n][:,r] * factors(A)[i][:,r]' for i = 1:n] for r = 1:rank(A)]
 
     # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
+    S = [[Cinv[i] * U[r][i] for i = 1:n] for r = 1:rank(A)]
 
     # lag and lead variables
     y_lead = selectdim(y, n+1, 2:last(dims))
     y_lag = selectdim(y, n+1, 1:last(dims)-1)
 
-    for k = 1:n
-        m = setdiff(1:n, k)
-        # matricize dependent variable along k-th mode
-        Z = tucker(y_lead, Cinv[m], m)
-        Zk = matricize(Z, k)
-        # matricize regressor along k-th mode
-        X = tucker(y_lag, S[m], m)
-        Xk = matricize(X, k)
+    # initialize residuals
+    resid(ε) .= y_lead
 
-        if !haskey(fixed_coef, :factors)
-            # Gram matrix
-            G = Xk * Xk'
-            # moment matrix
-            M = Zk * Xk'
+    for r = 1:rank(A)
+        s = setdiff(1:rank(A), r)
+        # dependent variable tensor
+        Zr = copy(y_lead)
+        for i in s
+            Xi = tucker(y_lag, U[i])
+            Zr .-= loadings(A)[i] .* Xi
+        end
+        for k = 1:n
+            m = setdiff(1:n, k)
+            # matricize dependent variable along k-th mode
+            Zr_scaled = tucker(Zr, Cinv[m], m)
+            Zkr = matricize(Zr_scaled, k)
+            # matricize regressor along k-th mode
+            Xr = tucker(y_lag, S[r][m], m)
+            Xkr = matricize(Xr, k)
 
-            # update factor k
-            update_factor!(
-                factors(A)[k], 
-                factors(A)[k+n], 
-                G \ M' * Ω[k], 
-                inv(loadings(A)[1] * dot(factors(A)[k+n], Ω[k], factors(A)[k+n]))
-            )
-            # update factor k+n
-            update_factor!(
-                factors(A)[k+n], 
-                factors(A)[k], 
-                M, 
-                inv(loadings(A)[1] * dot(factors(A)[k], G, factors(A)[k]))
-            )
-            
+            if !haskey(fixed_coef, :factors)
+                # Gram matrix
+                G = Xkr * Xkr'
+                # moment matrix
+                M = Zkr * Xkr'
 
-            # update outer product of Kruskal factors
-            U[k] = factors(A)[k+n] * factors(A)[k]'
+                # update factor k
+                update_factor!(
+                    factors(A)[k][:,r], 
+                    factors(A)[k+n][:,r], 
+                    G \ M' * Ω[k], 
+                    inv(loadings(A)[r] * dot(factors(A)[k+n][:,r], Ω[k], factors(A)[k+n][:,r]))
+                )
+                # update factor k+n
+                update_factor!(
+                    factors(A)[k+n][:,r], 
+                    factors(A)[k][:,r], 
+                    M, 
+                    inv(loadings(A)[r] * dot(factors(A)[k][:,r], G, factors(A)[k][:,r]))
+                )
+                
+                # update outer product of Kruskal factors
+                U[r][k] = factors(A)[k+n][:,r] * factors(A)[k][:,r]'
+            end
+
+            if !haskey(fixed_dist, :cov)
+                # update covariance
+                Ek = Zkr - loadings(A)[r] .* U[r][k] * Xkr
+                mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
+                # normalize
+                k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+
+                # update Cholesky decomposition
+                Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+
+                # update precision matrix
+                Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+            end
+        
+            # update scaling
+            S[r][k] = Cinv[k] * U[r][k]
         end
 
-        if !haskey(fixed_dist, :cov)
-            # update covariance
-            Ek = Zk - loadings(A)[1] .* U[k] * Xk
-            mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), .0)
-            # normalize
-            k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        # dependent variable and regressor tensors
+        Zr_scaled = tucker(Zr, Cinv)
+        Xr = tucker(y_lag, S[r])
 
-            # update Cholesky decomposition
-            Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
-
-            # update precision matrix
-            Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+        # update loading
+        if !haskey(fixed_coef, :loadings)
+            loadings(A)[r] = dot(Zr_scaled, Xr) / norm(Xr)^2
         end
-    
-        # update scaling
-        S[k] = Cinv[k] * U[k]
+
+        # update residuals
+        resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U[r])
     end
-
-    # dependent variable and regressor tensors
-    Z = tucker(y_lead, Cinv)
-    X = tucker(y_lag, S)
-
-    # update loading
-    if !haskey(fixed_coef, :loadings)
-        f(x) = norm(Z)^2 - 2 * dot(Z, X) * x + norm(X)^2 * x^2 
-        res = optimize(f, -1.0, 1.0)
-        loadings(A)[1] = Optim.minimizer(res)
-    end
-
-    # update residuals
-    resid(ε) .= y_lead .- loadings(A)[1] .* tucker(y_lag, U)
 
     return nothing
 end
