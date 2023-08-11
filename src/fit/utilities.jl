@@ -38,25 +38,13 @@ sse(model::AbstractTensorAutoregression) = norm(resid(model))^2
 Evaluate log-likelihood of the tensor autoregressive model `model`.
 """
 function loglike(model::StaticTensorAutoregression)
-    dist(model) isa WhiteNoise || error("Log-likelihood not available for white noise error distribution.")
+    dist(model) isa WhiteNoise && error("Log-likelihood not available for white noise error distribution.")
 
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
-    # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
-
-    # outer product of Kruskal factors
-    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
-
-    # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
-    
-    # dependent variable and regressor
-    Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv)
-    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -66,10 +54,8 @@ function loglike(model::StaticTensorAutoregression)
         m = setdiff(1:n, k)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
-    for t = 1:last(dims)-1
-        et = selectdim(Z, n+1, t) - loadings(model) .* selectdim(X, n+1, t)
-        ll -= 0.5 * norm(et)^2
-    end
+    # fit component
+    ll -= 0.5 * sse(model)
 
     return ll
 end
@@ -235,7 +221,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
             loadings(A) .= fixed.loadings
         else
             if method == :data
-                loadings(A) .= sign.(cp.lambda) .* min.(abs.(cp.lambda), .9)
+                loadings(A) .= cp.lambda
             elseif method == :random
                 loadings(A) .= rand(rank(A))
             end
