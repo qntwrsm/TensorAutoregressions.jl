@@ -45,6 +45,8 @@ function loglike(model::StaticTensorAutoregression)
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
+    # inverse of Cholesky decompositions
+    Cinv = [inv(C[i].L) for i = 1:n]
 
     # log-likelihood
     # constant
@@ -55,7 +57,7 @@ function loglike(model::StaticTensorAutoregression)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
     # fit component
-    ll -= 0.5 * sse(model)
+    ll -= 0.5 * norm(tucker(resid(model), Cinv))^2
 
     return ll
 end
