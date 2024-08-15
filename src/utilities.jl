@@ -197,7 +197,7 @@ function particle_sampler(
 end
 
 """
-    state_space(model) -> (y_star, Z_star, a1, P1)
+    state_space(model) -> (y_low, Z_low, H_low, a1, P1)
 
 State space form of the collapsed dynamic tensor autoregressive model `model`.
 """
@@ -206,28 +206,31 @@ function state_space(model::DynamicTensorAutoregression)
     n = ndims(data(model)) - 1
     Ty = eltype(data(model))
 
-    # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(model)))
-    # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
+    # precision matrices
+    Ω = inv.(cov(model))
 
     # outer product of Kruskal factors
-    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
 
     # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
+    S = [[Ω[i] * U[r][i] for i = 1:n] for r = 1:rank(model)]
 
     # collapsing
-    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
-    Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, transpose.(Cinv))
-    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(data(model), n+1, t+1)))) for t = 1:last(dims)-1]
+    Z = [stack([vec(tucker(yt, U[r])) for r = 1:rank(model)]) for yt in Iterators.take(eachslice(data(model), dims=n+1), last(dims)-1)]
+    Z_scaled = [stack([vec(tucker(yt, S[r])) for r = 1:rank(model)]) for yt in Iterators.take(eachslice(data(model), dims=n+1), last(dims)-1)]
+    C = transpose.(Z) .* Z_scaled
+    Z_basis = transpose.(C .\ transpose.(Z))
+    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n), Ref((dims[1:n]..., rank(model)))), Ref(Ω)), n+1)
+
+    y_low = [A_low * yt for yt in Iterators.drop(eachslice(data(model), dims=n+1), 1)]
+    Z_low = A_low .* Z
+    H_low = A_low .* Z_basis
 
     # initial conditions
     a1 = zeros(Ty, rank(model))
     P1 = Matrix{Ty}(I, rank(model), rank(model))
 
-    return (y_star, Z_star, a1, P1)
+    return (y_low, Z_low, H_low, a1, P1)
 end
 
 """
@@ -239,7 +242,7 @@ error variance `F`, and Kalman gain `K`.
 """
 function filter(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, a1, P1) = state_space(model)
+    (y, Z, H, a1, P1) = state_space(model)
     T = dynamics(coef(model))
     c = intercept(coef(model))
     Q = cov(coef(model))
@@ -259,7 +262,7 @@ function filter(model::DynamicTensorAutoregression)
     for t ∈ eachindex(y)
         # forecast error
         v[t] = y[t] - Z[t] * a[t]
-        F[t] = Z[t] * P[t] * Z[t]' + I
+        F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
         K[t] = T * P[t] * Z[t]' / F[t]
@@ -282,7 +285,7 @@ Returns the smoothed state `α̂`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, a1, P1) = state_space(model)
+    (y, Z, _, a1, P1) = state_space(model)
     T = dynamics(coef(model))
 
     # filter
