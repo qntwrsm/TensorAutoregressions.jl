@@ -32,10 +32,10 @@ function update!(model::DynamicTensorAutoregression)
 end
 
 """
-    als!(A, ε, y, fixed[, σ̂])
+    als!(A, ε, y, fixed[, V])
 
 Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
-tensor autoregressive model based on data `y` and smoothed loading variance `σ̂`
+tensor autoregressive model based on data `y` and smoothed loading variance `V`
 when `A` is dynamic, with fixed parameters indicated by `fixed`, using an
 alternating least squares (ALS) solve.
 """
@@ -375,18 +375,20 @@ function als!(
 end
 
 """
-    update_transition!(A, σ̂, γ̂, fixed)
+    update_transition!(A, V, Γ, fixed)
 
 Update transition dynamics of dynamic Kruskal coefficient tensor `A` using
-smoothed loadings variance `σ̂`, and autocovariance `γ̂`, with fixed parameters
+smoothed loadings variance `V`, and autocovariance `Γ`, with fixed parameters
 indicated by `fixed`.
 """
 function update_transition!(
     A::DynamicKruskal, 
-    σ̂::AbstractVector, 
-    γ̂::AbstractVector,
+    V::AbstractVector, 
+    Γ::AbstractVector,
     fixed::NamedTuple
 )
+    T = length(V)
+
     # lags and leads
     λ̂_lag = @view loadings(A)[1:end-1]
     λ̂_lead = @view loadings(A)[2:end]
@@ -399,24 +401,43 @@ function update_transition!(
     φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # objective closures
-    f_intercept(x) = x^2 - 2 * (mean(λ̂_lead) - dynamics(A)[1] * mean(λ̂_lag)) * x
-    function f_dynamics(x)
+    function f_intercept(x, r)
+        f = zero(x)
+        for t = 2:T
+           f -= 2 * (loadings(A)[r,t] - dynamics(A)[r,r] * loadings(A)[r,t-1]) * x
+        end
+        f = x^2 + f / (T - 1)
+
+        return f
+    end
+    function f_dynamics(x, r)
         scale = one(x) - x^2
-        α = intercept(A)[1]
-        c = mean(φ_lead) + α^2 - 2 * α * mean(λ̂_lead)
-        f = c + 2 * (α * mean(λ̂_lag) - mean(φ_cross)) * x + mean(φ_lag) * x^2
+        α = intercept(A)[r]
+        f = zero(x)
+        for t = 2:T
+            f += V[t][r,r] + loadings(A)[r,t]^2 - 2 * α * loadings(A)[r,t]
+            f += 2 * (α * loadings(A)[r,t-1] - Γ[t-1][r,r] - loadings(A)[r,t] * loadings(A)[r,t-1]) * x
+            f += (V[t-1][r,r] + loadings(A)[r,t-1]^2) * x^2
+        end
+        f = α^2 + f / (T - 1)
 
         return log(scale) + f * inv(scale)
     end
 
     # update dynamics
     if !haskey(fixed, :dynamics)
-        res = optimize(f_dynamics, 0.0, 1.0)
-        dynamics(A) .= Optim.minimizer(res)
+        for r = 1:rank(A)
+            objective(x) = f_dynamics(x, r)
+            res = optimize(f_dynamics, 0.0, 1.0)
+            dynamics(A)[r,r] = Optim.minimizer(res)
+        end
     end
     if !haskey(fixed, :intercept)
-        res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[1]))
-        intercept(A) .= Optim.minimizer(res)
+        for r = 1:rank(A)
+            objective(x) = f_intercept(x, r)
+            res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[r,r]))
+            intercept(A)[r] = Optim.minimizer(res)
+        end
     end
     cov(A).data .= I - dynamics(A) * dynamics(A)'
 
