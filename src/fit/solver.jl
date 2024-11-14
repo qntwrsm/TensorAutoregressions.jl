@@ -21,8 +21,8 @@ update!(model::StaticTensorAutoregression) = als!(coef(model), dist(model), data
 function update!(model::DynamicTensorAutoregression)
     # E-step
     # smoother
-    (α̂, V, Γ) = smoother(model)
-    loadings(model) .= hcat(α̂...)
+    (α, V, Γ) = smoother(model)
+    loadings(model) .= hcat(α...)
 
     # M-step
     update_transition!(coef(model), V, Γ, get(fixed(model), :coef, NamedTuple()))
@@ -388,17 +388,6 @@ function update_transition!(
     fixed::NamedTuple
 )
     T = length(V)
-
-    # lags and leads
-    λ̂_lag = @view loadings(A)[1:end-1]
-    λ̂_lead = @view loadings(A)[2:end]
-    σ̂_lag = @view σ̂[1:end-1]
-    σ̂_lead = @view σ̂[2:end]
-
-    # second moments
-    φ_lag = σ̂_lag + abs2.(λ̂_lag)
-    φ_lead = σ̂_lead + abs2.(λ̂_lead)
-    φ_cross = γ̂ + λ̂_lead .* λ̂_lag
 
     # objective closures
     function f_intercept(x, r)
