@@ -28,14 +28,14 @@ estimated using a Monte Carlo simulation with `samples` and a burn-in period
 `burn`.
 """
 function confidence_bounds(
-    model::AbstractTensorAutoregression, 
+    model::AbstractTensorAutoregression,
     periods::Integer,
-    α::Real, 
-    orth::Bool, 
-    samples::Integer=100, 
-    burn::Integer=100, 
+    α::Real,
+    orth::Bool,
+    samples::Integer=100,
+    burn::Integer=100,
     rng::AbstractRNG=Xoshiro()
-)   
+)
     Ψ = Vector{Array}(undef, samples)
 
     # Monte Carlo estimation
@@ -55,10 +55,10 @@ function confidence_bounds(
 
     # quantiles
     lower_idx = round(Int, samples * α / 2)
-    upper_idx = round(Int, samples * (1. - α / 2))
+    upper_idx = round(Int, samples * (1.0 - α / 2))
 
     # confidence bounds
-    Ψ = cat(Ψ..., dims=ndims(Ψ[1])+1)
+    Ψ = cat(Ψ..., dims=ndims(Ψ[1]) + 1)
     Ψ_sorted = sort(Ψ, dims=ndims(Ψ))
     lower = selectdim(Ψ_sorted, ndims(Ψ_sorted), lower_idx)
     upper = selectdim(Ψ_sorted, ndims(Ψ_sorted), upper_idx)
@@ -80,9 +80,9 @@ function moving_average(model::StaticTensorAutoregression, n::Integer)
     An = matricize(full(coef(model)), R)
 
     # moving average coefficients
-    Ψ = zeros(dims..., n+1)
+    Ψ = zeros(dims..., n + 1)
     for (h, ψh) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
-        ψh .= tensorize(An^(h-1), R, dims)
+        ψh .= tensorize(An^(h - 1), R, dims)
     end
 
     return Ψ
@@ -99,19 +99,19 @@ function moving_average(model::DynamicTensorAutoregression, n::Integer)
     An = matricize(full(coef(model)), R)
 
     # moving average coefficients
-    Ψ = zeros(dims[1:end-1]..., n+1, last(dims))
+    Ψ = zeros(dims[1:end-1]..., n + 1, last(dims))
     for (t, ψt) ∈ pairs(eachslice(Ψ, dims=ndims(Ψ)))
         # sample particles
-        particles = particle_sampler(model, n+1, time=t-1)
+        particles = particle_sampler(model, n + 1, time=t - 1)
         # cumulative product
         Λ = cumprod(selectdim(particles, ndims(particles), 2:n+1), dims=ndims(particles))
         # uncertainty aggregation
         λ = dropdims(mean(Λ, dims=2), dims=2)
         for (h, ψh) ∈ pairs(eachslice(ψt, dims=ndims(ψt)))
             if h == 1
-                ψh .= Id 
+                ψh .= Id
             else
-                ψh .= λ[1,h-1] * tensorize(An^(h-1), R, size(ψh))
+                ψh .= λ[1, h-1] * tensorize(An^(h - 1), R, size(ψh))
             end
         end
     end
@@ -134,8 +134,8 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
 
     # orthogonalize responses
     Ψ_orth = similar(Ψ)
-    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=n+1))
-        selectdim(Ψ_orth, n+1, h) .= tensorize(matricize(ψ, R) * C.L, R, size(ψ))
+    for (h, ψ) ∈ pairs(eachslice(Ψ, dims=n + 1))
+        selectdim(Ψ_orth, n + 1, h) .= tensorize(matricize(ψ, R) * C.L, R, size(ψ))
     end
 
     return Ψ_orth
@@ -170,7 +170,7 @@ function particle_sampler(
     time::Integer=last(size(coef(model))),
     samples::Integer=1000,
     rng::AbstractRNG=Xoshiro()
-)   
+)
     # transition coefficients
     T = dynamics(coef(model))
     c = intercept(coef(model))
@@ -185,49 +185,71 @@ function particle_sampler(
         â = a[time+1]
         P̂ = P[time+1]
     end
-    
+
     # particle sampling
     particles = similar(â, length(â), samples, periods)
-    particles[:,:,1] = rand(rng, MvNormal(â, P̂), samples)
+    particles[:, :, 1] = rand(rng, MvNormal(â, P̂), samples)
     for h = 2:periods, s = 1:samples
-        particles[:,s,h] = rand(rng, MvNormal(c + T * particles[:,s,h-1], Q))
+        particles[:, s, h] = rand(rng, MvNormal(c + T * particles[:, s, h-1], Q))
     end
 
     return particles
 end
 
 """
-    state_space(model) -> (y_star, Z_star, a1, P1)
+    collapse(model) -> (A_low, Z_basis)
 
-State space form of the collapsed dynamic tensor autoregressive model `model`.
+Low-dimensional collapsing matrices for the dynamic tensor autoregressive model 
+`model` following the approach of Jungbacker and Koopman (2015).
 """
-function state_space(model::DynamicTensorAutoregression)
+function collapse(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
-    Ty = eltype(data(model))
 
-    # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(model)))
-    # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
+    # precision matrices
+    Ω = inv.(cov(model))
 
     # outer product of Kruskal factors
-    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
+    U = [[factors(model)[i+n][:, r] * factors(model)[i][:, r]' for i = 1:n] for r = 1:rank(model)]
 
     # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
+    S = [[Ω[i] * U[r][i] for i = 1:n] for r = 1:rank(model)]
 
-    # collapsing
-    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
-    Z_star = [fill(norm(Xt), 1, 1) for Xt in eachslice(X, dims=n+1)]
-    A_star = tucker(X, transpose.(Cinv))
-    y_star = [vec(inv(Z_star[t]) * dot(vec(selectdim(A_star, n+1, t)), vec(selectdim(data(model), n+1, t+1)))) for t = 1:last(dims)-1]
+    # collapsing matrices
+    Z = [stack([vec(tucker(yt, U[r])) for r = 1:rank(model)]) for yt in Iterators.take(eachslice(data(model), dims=n + 1), last(dims) - 1)]
+    Z_scaled = [stack([vec(tucker(yt, S[r])) for r = 1:rank(model)]) for yt in Iterators.take(eachslice(data(model), dims=n + 1), last(dims) - 1)]
+    C = transpose.(Z) .* Z_scaled
+    Z_basis = transpose.(C .\ transpose.(Z))
+    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n), Ref((dims[1:n]..., rank(model)))), Ref(Ω)), n + 1)
+
+    return (A_low, Z_basis)
+end
+
+"""
+    state_space(model) -> (y_low, Z_low, H_low, a1, P1)
+
+State space form of the collapsed dynamic tensor autoregressive model `model` 
+following the approach of Jungbacker and Koopman (2015).
+"""
+function state_space(model::DynamicTensorAutoregression)
+    Ty = eltype(data(model))
+
+    # high-dimensional system matrices
+    Z = [stack([vec(tucker(yt, U[r])) for r = 1:rank(model)]) for yt in Iterators.take(eachslice(data(model), dims=n + 1), last(dims) - 1)]
+
+    # collapsing matrices
+    (A_low, Z_basis) = collapse(model)
+
+    # collapsed system
+    y_low = [A_low[t] * vec(yt) for (t, yt) in enumerate(Iterators.drop(eachslice(data(model), dims=n + 1), 1))]
+    Z_low = A_low .* Z
+    H_low = A_low .* Z_basis
 
     # initial conditions
     a1 = zeros(Ty, rank(model))
     P1 = Matrix{Ty}(I, rank(model), rank(model))
 
-    return (y_star, Z_star, a1, P1)
+    return (y_low, Z_low, H_low, a1, P1)
 end
 
 """
@@ -239,7 +261,7 @@ error variance `F`, and Kalman gain `K`.
 """
 function filter(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, a1, P1) = state_space(model)
+    (y, Z, H, a1, P1) = state_space(model)
     T = dynamics(coef(model))
     c = intercept(coef(model))
     Q = cov(coef(model))
@@ -259,7 +281,7 @@ function filter(model::DynamicTensorAutoregression)
     for t ∈ eachindex(y)
         # forecast error
         v[t] = y[t] - Z[t] * a[t]
-        F[t] = Z[t] * P[t] * Z[t]' + I
+        F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
         K[t] = T * P[t] * Z[t]' / F[t]
@@ -275,23 +297,23 @@ function filter(model::DynamicTensorAutoregression)
 end
 
 """
-    smoother(model) -> (α̂, V, Γ)
+    smoother(model) -> (α, V, Γ)
 
 Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`.
-Returns the smoothed state `α̂`, covariance `V`, and autocovariance `Γ`.
+Returns the smoothed state `α`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, a1, P1) = state_space(model)
+    (y, Z, _, a1, P1) = state_space(model)
     T = dynamics(coef(model))
 
     # filter
     (a, P, v, F, K) = filter(model)
 
     # initialize smoother output
-    α̂ = similar(a)
+    α = similar(a)
     V = similar(P)
-    Γ = similar(P, length(y)-1)
+    Γ = similar(P, length(y) - 1)
 
     # initialize smoother
     r = zero(a1)
@@ -307,13 +329,13 @@ function smoother(model::DynamicTensorAutoregression)
         N .= Z[t]' / F[t] * Z[t] + L' * N * L
 
         # smoothing
-        α̂[t] = a[t] + P[t] * r
+        α = a[t] + P[t] * r
         V[t] = P[t] - P[t] * N * P[t]
         t > 1 && (Γ[t-1] = I - P[t] * N)
         t < length(y) && (Γ[t] *= L * P[t])
     end
 
-    return (α̂, V, Γ)
+    return (α, V, Γ)
 end
 
 """
@@ -325,10 +347,10 @@ with a burn-in period of `burn` using the random number generator `rng`.
 function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     A_burn = DynamicKruskal(
         similar(loadings(A), size(loadings(A), 1), burn),
-        intercept(A), 
-        dynamics(A), 
-        cov(A), 
-        factors(A), 
+        intercept(A),
+        dynamics(A),
+        cov(A),
+        factors(A),
         rank(A)
     )
     dist = MvNormal(cov(A_burn))
@@ -338,7 +360,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
             # initial condition
             λt .= rand(rng, dist)
         else
-            λt .= intercept(A_burn) + dynamics(A_burn) * loadings(A_burn)[:,t-1] + rand(rng, dist)
+            λt .= intercept(A_burn) + dynamics(A_burn) * loadings(A_burn)[:, t-1] + rand(rng, dist)
         end
     end
 
@@ -347,7 +369,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
     dist = MvNormal(cov(A_sim))
     # simulate
     for (t, λt) ∈ pairs(eachslice(loadings(A_sim), dims=2))
-        λt_lag = t == 1 ? loadings(A_burn)[:,end] : loadings(A_sim)[:,t-1]
+        λt_lag = t == 1 ? loadings(A_burn)[:, end] : loadings(A_sim)[:, t-1]
         λt .= intercept(A_sim) + dynamics(A_sim) * λt_lag + rand(rng, dist)
     end
 
@@ -369,11 +391,11 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     C = [cholesky(Hermitian(Σi)).L for Σi ∈ cov(ε)]
 
     ε_burn = TensorNormal(
-        similar(resid(ε), dims[1:n]..., burn), 
+        similar(resid(ε), dims[1:n]..., burn),
         cov(ε)
     )
     # burn-in
-    for εt ∈ eachslice(resid(ε_burn), dims=n+1)
+    for εt ∈ eachslice(resid(ε_burn), dims=n + 1)
         # sample independent random normals and use tucker product with Cholesky 
         # decompositions
         εt .= tucker(randn(rng, dims[1:n]...), C)
@@ -382,7 +404,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     ε_sim = similar(ε)
     copyto!(ε_sim, ε)
     # simulate
-    for εt ∈ eachslice(resid(ε_sim), dims=n+1)
+    for εt ∈ eachslice(resid(ε_sim), dims=n + 1)
         # sample independent random normals and use tucker product with Cholesky 
         # decompositions
         εt .= tucker(randn(rng, dims[1:n]...), C)
