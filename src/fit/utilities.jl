@@ -30,7 +30,10 @@ end
 
 Evaluate sum of squared errors of the tensor autoregressive model `model`.
 """
-sse(model::AbstractTensorAutoregression) = norm(resid(model))^2
+function sse(model::AbstractTensorAutoregression)
+    update_resid!(model)
+    return norm(resid(model))^2
+end
 
 """
     loglike(model) -> ll
@@ -46,7 +49,7 @@ function loglike(model::StaticTensorAutoregression)
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
+    Cinv = inv.(getproperty.(C, :L))
 
     # log-likelihood
     # constant
@@ -57,6 +60,7 @@ function loglike(model::StaticTensorAutoregression)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
     # fit component
+    update_resid!(model)
     ll -= 0.5 * norm(tucker(resid(model), Cinv))^2
 
     return ll
@@ -69,20 +73,19 @@ function loglike(model::DynamicTensorAutoregression)
     # filter
     (_, _, v, F, _) = filter(model)
 
+    # annihilator matrix
+    (A_low, Z_basis) = collapse(model)
+    M = Ref(I) .- Z_basis .* ((A_low .* Z_basis) .\ A_low)
+
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
     # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i = 1:n]
-
-    # outer product of Kruskal factors
-    U = [factors(model)[i+n] * factors(model)[i]' for i = 1:n]
-
-    # scaling
-    S = [Cinv[i] * U[i] for i = 1:n]
+    Cinv = inv.(getproperty.(C, :L))
+    # low dimensional state-covariance matrix
+    H_low = A_low .* Z_basis
     
-    # dependent variable and regressor
+    # dependent variable
     Z = tucker(selectdim(data(model), n+1, 2:last(dims)), Cinv)
-    X = tucker(selectdim(data(model), n+1, 1:last(dims)-1), S)
 
     # log-likelihood
     # constant
@@ -91,16 +94,68 @@ function loglike(model::DynamicTensorAutoregression)
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
         # collapsed component
-        et = selectdim(Z, n+1, t) - inv(Z_star[t]) * y_star[t] .* selectdim(X, n+1, t)
+        et = M[t] * vec(selectdim(Z, n+1, t))
         ll -= 0.5 * norm(et)^2
+        # projection component
+        ll += 0.5 * (last(dims) - 1) * logdet(H_low[t])
     end
-    # projection matrix component
+    # projection component
     for k = 1:n
         m = setdiff(1:n, k)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
 
     return ll
+end
+
+"""
+    update_resid!(model)
+
+In-place update of the residuals of the tensor autoregressive model `model`.
+"""
+function update_resid!(model::StaticTensorAutoregression)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # lag and lead variables
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+
+    # outer product of Kruskal factors
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
+
+    # update residuals
+    resid(model) .= y_lead
+    for r in 1:rank(model)
+        resid(model) .-= loadings(model)[r] .* tucker(y_lag, U[r])
+    end
+
+    return nothing
+end
+
+function update_resid!(model::DynamicTensorAutoregression)
+    dims = size(y)
+    n = ndims(y) - 1
+
+    # lag and lead variables
+    y_lead = selectdim(y, n+1, 2:last(dims))
+    y_lag = selectdim(y, n+1, 1:last(dims)-1)
+
+    # outer product of Kruskal factors
+    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
+
+    # regressor tensors
+    X = [tucker(y_lag, U[r]) for r = 1:rank(model)]
+
+    # update residuals
+    resid(model) .= y_lead
+    for (t, εt) in pairs(eachslice(resid(model), dims=n+1))
+        for r = 1:rank(model)
+            εt .-= loadings(model)[r,t] .* selectdim(X[r], n+1, t)
+        end
+    end
+
+    return nothing
 end
 
 """
@@ -245,9 +300,11 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         # dynamics
         λ_lead = @view loadings(A)[:,2:end]
         λ_lag = @view loadings(A)[:,1:end-1]
-        β = λ_lead / vcat(ones(1,last(dims)-2), λ_lag)
-        intercept(A) .= haskey(fixed, :intercept) ? fixed.intercept : β[1]
-        dynamics(A) .= haskey(fixed, :dynamics) ? fixed.dynamics : β[2]
+        β = hcat.(Ref(ones(last(dims) - 2)), eachrow(λ_lag)) .\ eachrow(λ_lead)
+        for (r, βr) in enumerate(β)
+            intercept(A)[r] = haskey(fixed, :intercept) ? fixed.intercept[r] : βr[1]
+            dynamics(A).diag[r] .= haskey(fixed, :dynamics) ? fixed.dynamics.diag[r] : βr[2]
+        end
         cov(A).data .= I - dynamics(A) * dynamics(A)'
     end
 
