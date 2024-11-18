@@ -14,20 +14,18 @@ interface.jl
         y, 
         R; 
         dynamic=false, 
-        dist=:white_noise,
-        fixed=NamedTuple()
+        dist=:white_noise
     ) -> model
 
 Constructs a tensor autoregressive model for data `y` with autoregressive
 coefficient tensor of rank `R`, potentially dynamic, and tensor error
-distribution `dist` and fixed parameters indicated by `fixed`.
+distribution `dist`.
 """
 function TensorAutoregression(
     y::AbstractArray, 
     R::Integer; 
     dynamic::Bool=false, 
-    dist::Symbol=:white_noise,
-    fixed::NamedTuple=NamedTuple()
+    dist::Symbol=:white_noise
 )   
     dims = size(y)
     n = ndims(y) - 1
@@ -41,7 +39,7 @@ function TensorAutoregression(
             similar(y, R, last(dims)-1), 
             similar(y, R), 
             Diagonal(similar(y, R)), 
-            Symmetric(similar(y, R, R)),
+            Diagonal(similar(y, R)),
             [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
             R
         )
@@ -71,7 +69,7 @@ function TensorAutoregression(
         throw(ArgumentError("distribution $dist not supported."))
     end
 
-    return model(y, ε, A, fixed)
+    return model(y, ε, A)
 end
 
 """
@@ -79,22 +77,20 @@ end
         dims, 
         R; 
         dynamic=false, 
-        dist=:white_noise,
-        fixed=NamedTuple()
+        dist=:white_noise
     ) -> model
 
 Constructs a tensor autoregressive model of dimensions `dims` with
 autoregressive coefficient tensor of rank `R`, potentially dynamic, and tensor
-error distribution `dist` and fixed parameters indicated by `fixed`.
+error distribution `dist`.
 """
 function TensorAutoregression(
     dims::Dims, 
     R::Integer; 
     dynamic::Bool=false, 
-    dist::Symbol=:white_noise,
-    fixed::NamedTuple=NamedTuple()
+    dist::Symbol=:white_noise
 )   
-    return TensorAutoregression(zeros(dims), R, dynamic=dynamic, dist=dist, fixed=fixed)
+    return TensorAutoregression(zeros(dims), R, dynamic=dynamic, dist=dist)
 end
 
 """
@@ -231,9 +227,6 @@ function fit!(
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
-        println("Fixed parameters:")
-        println("   Kruskal tensor: ", haskey(fixed(model), :coef) ? keys(fixed(model).coef) : "none")
-        println("   Distribution: ", haskey(fixed(model), :dist) ? keys(fixed(model).dist) : "none")
         println("===========================")
         println()
     end

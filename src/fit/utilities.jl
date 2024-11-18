@@ -161,8 +161,7 @@ end
 """
     init!(model, method)
 
-Initialize the tensor autoregressive model `model` by `method`, excluding the
-fixed parameters indicated.
+Initialize the tensor autoregressive model `model` by `method`.
 
 When `method` is set to `:data`: 
 - Initialization of the Kruskal coefficient tensor is based on ridge regression of
@@ -188,8 +187,7 @@ function init!(model::AbstractTensorAutoregression, method::NamedTuple)
     if method.coef != :none
         init!(
             coef(model), 
-            data(model), 
-            get(fixed(model), :coef, NamedTuple()), 
+            data(model),
             method.coef
         )
     end
@@ -200,7 +198,6 @@ function init!(model::AbstractTensorAutoregression, method::NamedTuple)
             dist(model), 
             data(model), 
             coef(model), 
-            get(fixed(model), :dist, NamedTuple()), 
             method.dist
         )
     end
@@ -209,10 +206,9 @@ function init!(model::AbstractTensorAutoregression, method::NamedTuple)
 end
 
 """
-    init!(A, y, fixed, method)
+    init!(A, y, method)
 
-Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`,
-excluding the fixed parameters indicated by `fixed`.
+Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`.
 
 When `method` is set to `:data`: 
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
@@ -225,7 +221,7 @@ CP decomposition.
 In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the
 factor model representation of the model.
 """
-function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::Symbol)
+function init!(A::AbstractKruskal, y::AbstractArray, method::Symbol)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -258,30 +254,22 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         cp = cp_als(tensorize(β_star, n+1:2n, (dims[1:n]..., dims[1:n]...)), rank(A))
     end
     # factors
-    if haskey(fixed, :factors)
-        factors(A) .= fixed.factors
-    else
-        if method == :data
-            factors(A) .= cp.fmat
-        elseif method == :random
-            for k = 1:n, r = 1:rank(A)
-                factors(A)[k][:,r] .= randn(dims[k])
-                factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
-                factors(A)[k+n][:,r] .= randn(dims[k])
-                factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
-            end
+    if method == :data
+        factors(A) .= cp.fmat
+    elseif method == :random
+        for k = 1:n, r = 1:rank(A)
+            factors(A)[k][:,r] .= randn(dims[k])
+            factors(A)[k][:,r] .*= inv(norm(factors(A)[k][:,r]))
+            factors(A)[k+n][:,r] .= randn(dims[k])
+            factors(A)[k+n][:,r] .*= inv(norm(factors(A)[k+n][:,r]))
         end
     end
     # loadings
     if A isa StaticKruskal
-        if haskey(fixed, :loadings)
-            loadings(A) .= fixed.loadings
-        else
-            if method == :data
-                loadings(A) .= cp.lambda
-            elseif method == :random
-                loadings(A) .= rand(rank(A))
-            end
+        if method == :data
+            loadings(A) .= cp.lambda
+        elseif method == :random
+            loadings(A) .= rand(rank(A))
         end
     else
         xt = similar(x, size(x, 1), rank(A))
@@ -302,8 +290,8 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
         λ_lag = @view loadings(A)[:,1:end-1]
         β = hcat.(Ref(ones(last(dims) - 2)), eachrow(λ_lag)) .\ eachrow(λ_lead)
         for (r, βr) in enumerate(β)
-            intercept(A)[r] = haskey(fixed, :intercept) ? fixed.intercept[r] : βr[1]
-            dynamics(A).diag[r] .= haskey(fixed, :dynamics) ? fixed.dynamics.diag[r] : βr[2]
+            intercept(A)[r] = βr[1]
+            dynamics(A).diag[r] = βr[2]
         end
         cov(A) .= I - dynamics(A) * dynamics(A)'
     end
@@ -312,11 +300,10 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
 end
 
 """
-    init!(ε, y, A, fixed, method)
+    init!(ε, y, A, method)
 
 Initialize the tensor error distribution `ε` given the data `y` and the Kruskal
-coefficent tensor `A` using `method`, excluding the fixed parameters indicated
-by `fixed`.
+coefficent tensor `A` using `method`.
 
 When `method` is set to `:data`:
 Initiliazation of the tensor error distribution is based on the sample
@@ -331,7 +318,6 @@ function init!(
     ε::AbstractTensorErrorDistribution, 
     y::AbstractArray, 
     A::AbstractKruskal, 
-    fixed::NamedTuple,
     method::Symbol
 )
     dims = size(y)
@@ -354,27 +340,19 @@ function init!(
     end
     # covariance
     if ε isa WhiteNoise
-        if haskey(fixed, :cov)
-            cov(ε) .= fixed.cov
-        else
-            if method == :data
-                cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
-            elseif method == :random
-                p = prod(dims[1:n])
-                cov(ε).data .= rand(InverseWishart(p+2, I(p)))
-            end
+        if method == :data
+            cov(ε).data .= cov(reshape(resid(ε), :, 1:last(dims)-1), dims=2)
+        elseif method == :random
+            p = prod(dims[1:n])
+            cov(ε).data .= rand(InverseWishart(p+2, I(p)))
         end
     else
         scale = one(eltype(resid(ε)))
         for k = 1:n
-            if haskey(fixed, :cov)
-                cov(ε)[k] .= fixed.cov[k]
-            else
-                if method == :data
-                    cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
-                elseif method == :random
-                    cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
-                end
+            if method == :data
+                cov(ε)[k].data .= cov(matricize(resid(ε), k), dims=2)
+            elseif method == :random
+                cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
             end
             if k < n
                 scale *= norm(cov(ε)[k])

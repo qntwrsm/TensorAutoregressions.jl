@@ -166,7 +166,6 @@ function cov(ε::TensorNormal; full::Bool=false)
         for Σi ∈ reverse(cov(ε)[1:end-1])
             Σ = kron(Σ, Σi)
         end
-
         return Σ
     else
         return ε.Σ
@@ -205,25 +204,22 @@ Kruskal tensor representation `A`.
 struct StaticTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
-    TA<:StaticKruskal,
-    Tfixed<:NamedTuple
+    TA<:StaticKruskal
 } <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
-    fixed::Tfixed
     function StaticTensorAutoregression(
         y::AbstractArray, 
         ε::AbstractTensorErrorDistribution, 
-        A::StaticKruskal, 
-        fixed::NamedTuple
+        A::StaticKruskal
     )
         dims = size(y)
         n = ndims(y) - 1
         size(y)[1:n] == size(resid(ε))[1:n] || throw(DimensionMismatch("dimensions of y and residuals must be equal."))
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
 
-        return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
+        return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
 end
 
@@ -236,18 +232,15 @@ Kruskal tensor representation `A`.
 struct DynamicTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
-    TA<:DynamicKruskal,
-    Tfixed<:NamedTuple
+    TA<:DynamicKruskal
 } <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
-    fixed::Tfixed
     function DynamicTensorAutoregression(
         y::AbstractArray, 
         ε::AbstractTensorErrorDistribution, 
-        A::DynamicKruskal, 
-        fixed::NamedTuple
+        A::DynamicKruskal
     )
         dims = size(y)
         n = ndims(y) - 1
@@ -255,7 +248,7 @@ struct DynamicTensorAutoregression{
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) || throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
         ε isa WhiteNoise && throw(ArgumentError("dynamic model with white noise error not supported."))
 
-        return new{typeof(y), typeof(ε), typeof(A), typeof(fixed)}(y, ε, A, fixed)
+        return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
 end
 
@@ -263,7 +256,6 @@ end
 data(model::AbstractTensorAutoregression) = model.y
 coef(model::AbstractTensorAutoregression) = model.A
 dist(model::AbstractTensorAutoregression) = model.ε
-fixed(model::AbstractTensorAutoregression) = model.fixed 
 resid(model::AbstractTensorAutoregression) = resid(dist(model))
 cov(model::AbstractTensorAutoregression; full::Bool=false) = cov(dist(model), full=full)
 factors(model::AbstractTensorAutoregression) = factors(coef(model))
@@ -271,13 +263,12 @@ loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
 rank(model::AbstractTensorAutoregression) = rank(coef(model))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = dof(coef(model)) + dof(dist(model))
-Base.similar(model::StaticTensorAutoregression) = StaticTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
-Base.similar(model::DynamicTensorAutoregression) = DynamicTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
+Base.similar(model::StaticTensorAutoregression) = StaticTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)))
+Base.similar(model::DynamicTensorAutoregression) = DynamicTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)))
 function Base.copyto!(dest::AbstractTensorAutoregression, src::AbstractTensorAutoregression)
     copyto!(data(dest), data(src))
     copyto!(dist(dest), dist(src))
     copyto!(coef(dest), coef(src))
-    fixed(dest) = fixed(src)
 
     return dest
 end
