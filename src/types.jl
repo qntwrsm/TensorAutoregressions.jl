@@ -24,7 +24,7 @@ abstract type AbstractKruskal end
 
 Static Kruskal tensor of rank `R` with loadings `λ` and factor matrices `U`.
 """
-mutable struct StaticKruskal{
+struct StaticKruskal{
     Tλ<:AbstractVector, 
     TU<:AbstractVector
 } <: AbstractKruskal
@@ -45,7 +45,7 @@ end
 Dynamic Kruskal tensor of rank `R` with dynamic loadings `λ` and factor matrices
 `U`. 
 """
-mutable struct DynamicKruskal{
+struct DynamicKruskal{
     Tλ<:AbstractMatrix,
     Tα<:AbstractVector,
     Tϕ<:Diagonal,
@@ -123,7 +123,7 @@ abstract type AbstractTensorErrorDistribution end
 White noise model of tensor errors `ε` with covariance matrix `Σ` of
 ``vec(ε)``.
 """
-mutable struct WhiteNoise{
+struct WhiteNoise{
     Tε<:AbstractArray,
     TΣ<:Symmetric
 } <: AbstractTensorErrorDistribution
@@ -142,7 +142,7 @@ end
 Tensor normal model of tensor errors `ε` with separable covariance matrix
 `Σ` along each mode of the tensor.
 """
-mutable struct TensorNormal{
+struct TensorNormal{
     Tε<:AbstractArray,
     TΣ<:AbstractVector
 } <: AbstractTensorErrorDistribution
@@ -202,7 +202,7 @@ abstract type AbstractTensorAutoregression <: StatisticalModel end
 Tensor autoregressive model with tensor error distribution `ε` and static
 Kruskal tensor representation `A`.
 """
-mutable struct StaticTensorAutoregression{
+struct StaticTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
     TA<:StaticKruskal,
@@ -233,7 +233,7 @@ end
 Tensor autoregressive model with tensor error distribution `ε` and dynamic
 Kruskal tensor representation `A`.
 """
-mutable struct DynamicTensorAutoregression{
+struct DynamicTensorAutoregression{
     Ty<:AbstractArray, 
     Tε<:AbstractTensorErrorDistribution,
     TA<:DynamicKruskal,
@@ -298,7 +298,7 @@ Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
 `upper` as the lower and upper bounds of the ``α``% confidence interval, and
 `orth` as whether the IRF is orthogonalized.
 """
-mutable struct StaticIRF{TΨ<:AbstractArray} <: AbstractIRF
+struct StaticIRF{TΨ<:AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
@@ -315,7 +315,7 @@ Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
 `upper` as the lower and upper bounds of the ``α``% confidence interval, and
 `orth` as whether the IRF is orthogonalized.
 """
-mutable struct DynamicIRF{TΨ<:AbstractArray} <: AbstractIRF
+struct DynamicIRF{TΨ<:AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
