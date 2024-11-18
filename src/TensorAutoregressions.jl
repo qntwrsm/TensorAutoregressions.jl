@@ -21,8 +21,12 @@ using
     CairoMakie,
     Dates
 
+using StatsAPI: StatisticalModel 
+using StatsAPI: aic, aicc, bic
+
 import LinearAlgebra: rank
 import Statistics: cov
+import StatsAPI: fit!, loglikelihood, dof, nobs
 
 # Makie backend and theme
 CairoMakie.activate!()
@@ -42,6 +46,8 @@ export
 
     ## fit
     fit!,
+    loglikelihood,
+    dof, nobs, aic, aicc, bic,
 
     ## forecast
     forecast,

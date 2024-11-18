@@ -16,12 +16,12 @@ utilities.jl
 Wrapper for objective function evaluation for tensor autoregressive model
 `model`.
 """
-objective(model::AbstractTensorAutoregression) = loglike(model)
+objective(model::AbstractTensorAutoregression) = loglikelihood(model)
 function objective(model::StaticTensorAutoregression)
     if dist(model) isa WhiteNoise
         return sse(model)
     else
-        return loglike(model)
+        return loglikelihood(model)
     end
 end
 
@@ -36,11 +36,11 @@ function sse(model::AbstractTensorAutoregression)
 end
 
 """
-    loglike(model) -> ll
+    loglikelihood(model) -> ll
 
 Evaluate log-likelihood of the tensor autoregressive model `model`.
 """
-function loglike(model::StaticTensorAutoregression)
+function loglikelihood(model::StaticTensorAutoregression)
     dist(model) isa WhiteNoise && error("Log-likelihood not available for white noise error distribution.")
 
     dims = size(data(model))
@@ -66,7 +66,7 @@ function loglike(model::StaticTensorAutoregression)
     return ll
 end
 
-function loglike(model::DynamicTensorAutoregression)
+function loglikelihood(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 

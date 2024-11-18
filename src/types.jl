@@ -48,8 +48,8 @@ Dynamic Kruskal tensor of rank `R` with dynamic loadings `λ` and factor matrice
 mutable struct DynamicKruskal{
     Tλ<:AbstractMatrix,
     Tα<:AbstractVector,
-    Tϕ<:AbstractMatrix,
-    TΣ<:AbstractMatrix,
+    Tϕ<:Diagonal,
+    TΣ<:Diagonal,
     TU<:AbstractVector
 } <: AbstractKruskal
     λ::Tλ
@@ -61,14 +61,14 @@ mutable struct DynamicKruskal{
     function DynamicKruskal(
         λ::AbstractMatrix,
         α::AbstractVector,
-        ϕ::AbstractMatrix, 
-        Σ::AbstractMatrix, 
+        ϕ::Diagonal, 
+        Σ::Diagonal, 
         U::AbstractVector, 
         R::Integer
     )
         length(α) == R || error("α must be a vector of length R.")
-        size(ϕ, 1) == size(ϕ, 2) == R || error("ϕ must be a square matrix of rank R.")
-        issymmetric(Σ) && size(Σ, 1) == R || error("Σ must be a symmetric matrix of rank R.")
+        size(ϕ, 1) == R || error("ϕ must be a diagonal matrix of rank R.")
+        size(Σ, 1) == R || error("Σ must be a diagonal matrix of rank R.")
         length(unique(size.(U, 2))) == 1 || throw(DimensionMismatch("all factor matrices must have the same number of columns."))
         size(λ, 1) == size(U[1], 2) == R || throw(DimensionMismatch("number of loadings and number of columns of factor matrices must equal rank R."))
 
@@ -87,6 +87,8 @@ full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
 intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
+dof(A::StaticKruskal) = rank(A) + sum(length, factors(A))
+dof(A::DynamicKruskal) = 3 * rank(A) + sum(length, factors(A))
 Base.similar(A::StaticKruskal) = StaticKruskal(similar(loadings(A)), similar.(factors(A)), rank(A))
 Base.similar(A::DynamicKruskal) = DynamicKruskal(similar(loadings(A)), similar(intercept(A)), similar(dynamics(A)), similar(cov(A)), similar.(factors(A)), rank(A))
 function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
@@ -123,15 +125,14 @@ White noise model of tensor errors `ε` with covariance matrix `Σ` of
 """
 mutable struct WhiteNoise{
     Tε<:AbstractArray,
-    TΣ<:AbstractMatrix
+    TΣ<:Symmetric
 } <: AbstractTensorErrorDistribution
     ε::Tε
-    Σ::TΣ
-    function WhiteNoise(ε::AbstractArray, Σ::AbstractMatrix)
-        issymmetric(Σ) || error("Σ must be symmetric.")
+    Σ::Symmetric
+    function WhiteNoise(ε::AbstractArray, Σ::Symmetric)
         prod(size(ε)[1:end-1]) == size(Σ, 1) || throw(DimensionMismatch("number of elements in vec(εₜ) must equal rank of Σ."))
 
-        return new{typeof(ε), Symmetric}(ε, Symmetric(Σ))
+        return new{typeof(ε), typeof(Σ)}(ε, Σ)
     end
 end
 
@@ -161,7 +162,7 @@ resid(ε::AbstractTensorErrorDistribution) = ε.ε
 cov(ε::AbstractTensorErrorDistribution; full::Bool=false) = ε.Σ
 function cov(ε::TensorNormal; full::Bool=false)
     if full
-        Σ= cov(ε)[end]
+        Σ = cov(ε)[end]
         for Σi ∈ reverse(cov(ε)[1:end-1])
             Σ = kron(Σ, Σi)
         end
@@ -171,6 +172,7 @@ function cov(ε::TensorNormal; full::Bool=false)
         return ε.Σ
     end
 end
+dof(ε::AbstractTensorErrorDistribution) = (sum(length, cov(ε)) + sum(size.(cov(ε), 1))) / 2
 Base.similar(ε::WhiteNoise) = WhiteNoise(similar(resid(ε)), similar(cov(ε)))
 Base.similar(ε::TensorNormal) = TensorNormal(similar(resid(ε)), similar.(cov(ε)))
 function Base.copyto!(dest::WhiteNoise, src::WhiteNoise)
@@ -188,11 +190,11 @@ end
 
 # Tensor autoreggresive model
 """
-    AbstractTensorAutoregression
+    AbstractTensorAutoregression <: StatisticalModel
 
 Abstract type for tensor autoregressive model.
 """
-abstract type AbstractTensorAutoregression end
+abstract type AbstractTensorAutoregression <: StatisticalModel end
 
 """
     StaticTensorAutoregression <: AbstractTensorAutoregression
@@ -267,6 +269,8 @@ cov(model::AbstractTensorAutoregression; full::Bool=false) = cov(dist(model), fu
 factors(model::AbstractTensorAutoregression) = factors(coef(model))
 loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
 rank(model::AbstractTensorAutoregression) = rank(coef(model))
+nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
+dof(model::AbstractTensorAutoregression) = dof(coef(model)) + dof(dist(model))
 Base.similar(model::StaticTensorAutoregression) = StaticTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
 Base.similar(model::DynamicTensorAutoregression) = DynamicTensorAutoregression(similar(data(model)), similar(dist(model)), similar(coef(model)), NamedTuple())
 function Base.copyto!(dest::AbstractTensorAutoregression, src::AbstractTensorAutoregression)
