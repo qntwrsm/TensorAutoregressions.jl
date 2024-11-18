@@ -1,8 +1,8 @@
 #=
 TensorAutoregressions.jl
 
-    Provides a collection of tools for working with tensor autoregressive 
-    models, such as estimation, forecasting, and impulse response analysis. 
+    Provides a collection of tools for working with tensor autoregressive models, such as
+    estimation, forecasting, and impulse response analysis.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -11,17 +11,10 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using 
-    LinearAlgebra,
-    Statistics, 
-    Random, 
-    Distributions, 
-    TensorToolbox, 
-    Optim, 
-    CairoMakie,
-    Dates
+using LinearAlgebra, Statistics, Random, Distributions, TensorToolbox, Optim
+using CairoMakie, Dates
 
-using StatsAPI: StatisticalModel 
+using StatsAPI: StatisticalModel
 using StatsAPI: aic, aicc, bic
 
 import LinearAlgebra: rank
@@ -32,35 +25,35 @@ import StatsAPI: fit!, loglikelihood, dof, nobs
 CairoMakie.activate!()
 
 export
-    # constructor
-    TensorAutoregression,
+# constructor
+      TensorAutoregression,
 
-    # interface methods
-    ## getters
-    data, coef, dist,   # general
-    resid, cov, # residuals
-    factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
+# interface methods
+## getters
+      data, coef, dist,   # general
+      resid, cov, # residuals
+      factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
 
-    # simulate
-    simulate,
+# simulate
+      simulate,
 
-    ## fit
-    fit!,
-    loglikelihood,
-    dof, nobs, aic, aicc, bic,
+## fit
+      fit!,
+      loglikelihood,
+      dof, nobs, aic, aicc, bic,
 
-    ## forecast
-    forecast,
+## forecast
+      forecast,
 
-    ## impulse response functions
-    irf,
-    lower, upper, orth,
+## impulse response functions
+      irf,
+      lower, upper, orth,
 
-    # plotting
-    data_plot,
-    kruskal_plot,
-    cov_plot,
-    irf_plot
+# plotting
+      data_plot,
+      kruskal_plot,
+      cov_plot,
+      irf_plot
 
 include("tensor_algebra.jl")
 include("types.jl")

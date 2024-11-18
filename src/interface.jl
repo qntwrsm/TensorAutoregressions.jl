@@ -21,50 +21,41 @@ Constructs a tensor autoregressive model for data `y` with autoregressive
 coefficient tensor of rank `R`, potentially dynamic, and tensor error
 distribution `dist`.
 """
-function TensorAutoregression(
-    y::AbstractArray, 
-    R::Integer; 
-    dynamic::Bool=false, 
-    dist::Symbol=:white_noise
-)   
+function TensorAutoregression(y::AbstractArray,
+                              R::Integer;
+                              dynamic::Bool = false,
+                              dist::Symbol = :white_noise)
     dims = size(y)
     n = ndims(y) - 1
 
     # check model specification
-    dynamic && dist == :white_noise && throw(ArgumentError("dynamic model with white noise error not supported."))
+    dynamic && dist == :white_noise &&
+        throw(ArgumentError("dynamic model with white noise error not supported."))
 
     # instantiate Kruskal autoregressive tensor
     if dynamic
-        A = DynamicKruskal(
-            similar(y, R, last(dims)-1), 
-            similar(y, R), 
-            Diagonal(similar(y, R)), 
-            Diagonal(similar(y, R)),
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
-            R
-        )
+        A = DynamicKruskal(similar(y, R, last(dims) - 1),
+                           similar(y, R),
+                           Diagonal(similar(y, R)),
+                           Diagonal(similar(y, R)),
+                           [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)],
+                           R)
         model = DynamicTensorAutoregression
     else
-        A = StaticKruskal(
-            similar(y, R), 
-            [similar(y, dims[i - n*((i-1)÷n)], R) for i = 1:2n], 
-            R
-        )
+        A = StaticKruskal(similar(y, R),
+                          [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)],
+                          R)
         model = StaticTensorAutoregression
     end
 
     # instantiate tensor error distribution
     N = prod(dims[1:n])
     if dist == :white_noise
-        ε = WhiteNoise(
-            similar(y, dims[1:n]..., last(dims)-1), 
-            Symmetric(similar(y, N, N))
-        )
+        ε = WhiteNoise(similar(y, dims[1:n]..., last(dims) - 1),
+                       Symmetric(similar(y, N, N)))
     elseif dist == :tensor_normal
-        ε = TensorNormal(
-            similar(y, dims[1:end-1]..., last(dims)-1), 
-            [Symmetric(similar(y, dims[i], dims[i])) for i = 1:n]
-        )
+        ε = TensorNormal(similar(y, dims[1:(end - 1)]..., last(dims) - 1),
+                         [Symmetric(similar(y, dims[i], dims[i])) for i in 1:n])
     else
         throw(ArgumentError("distribution $dist not supported."))
     end
@@ -84,13 +75,11 @@ Constructs a tensor autoregressive model of dimensions `dims` with
 autoregressive coefficient tensor of rank `R`, potentially dynamic, and tensor
 error distribution `dist`.
 """
-function TensorAutoregression(
-    dims::Dims, 
-    R::Integer; 
-    dynamic::Bool=false, 
-    dist::Symbol=:white_noise
-)   
-    return TensorAutoregression(zeros(dims), R, dynamic=dynamic, dist=dist)
+function TensorAutoregression(dims::Dims,
+                              R::Integer;
+                              dynamic::Bool = false,
+                              dist::Symbol = :white_noise)
+    return TensorAutoregression(zeros(dims), R, dynamic = dynamic, dist = dist)
 end
 
 """
@@ -100,7 +89,8 @@ Simulate data from the tensor autoregressive model described by `model` and
 return a new instance with the simulated data, using random number generator
 `rng` and apply a burn-in period of `burn`.
 """
-function simulate(model::StaticTensorAutoregression; burn::Integer=100, rng::AbstractRNG=Xoshiro())
+function simulate(model::StaticTensorAutoregression;
+                  burn::Integer = 100, rng::AbstractRNG = Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -109,35 +99,36 @@ function simulate(model::StaticTensorAutoregression; burn::Integer=100, rng::Abs
     copyto!(A_sim, coef(model))
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
-    
+    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i+n][:,r] * factors(A_sim)[i][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
+    U = [[factors(A_sim)[i + n][:, r] * factors(A_sim)[i][:, r]' for i in 1:n]
+         for r in 1:rank(A_sim)]
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn+1)
-    for (t, yt) ∈ pairs(eachslice(y_burn, dims=n+1))
+    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n+1, t)
+        yt .= selectdim(resid(ε_burn), n + 1, t)
         if t > 1
             # autoregressive component
-            for r = 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_burn, n+1, t-1), U[r])
+            for r in 1:rank(A_sim)
+                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_burn, n + 1, t - 1), U[r])
             end
         end
     end
 
     # simulate data
     y_sim = similar(data(model))
-    for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
+    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
         if t == 1
-            yt .= selectdim(y_burn, n+1, burn+1)
+            yt .= selectdim(y_burn, n + 1, burn + 1)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n+1, t-1)
+            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
             # autoregressive component
-            for r = 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_sim, n+1, t-1), U[r])
+            for r in 1:rank(A_sim)
+                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_sim, n + 1, t - 1), U[r])
             end
         end
     end
@@ -145,7 +136,8 @@ function simulate(model::StaticTensorAutoregression; burn::Integer=100, rng::Abs
     return StaticTensorAutoregression(y_sim, ε_sim, A_sim, fixed(model))
 end
 
-function simulate(model::DynamicTensorAutoregression; burn::Integer=100, rng::AbstractRNG=Xoshiro())
+function simulate(model::DynamicTensorAutoregression;
+                  burn::Integer = 100, rng::AbstractRNG = Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -153,35 +145,38 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer=100, rng::Ab
     (A_sim, A_burn) = simulate(coef(model), burn, rng)
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn+1, rng)
-    
+    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i+n][:,r] * factors(A_sim)[i][:,r]' for i = 1:n] for r = 1:rank(A_sim)]
+    U = [[factors(A_sim)[i + n][:, r] * factors(A_sim)[i][:, r]' for i in 1:n]
+         for r in 1:rank(A_sim)]
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn+1)
-    for (t, yt) ∈ pairs(eachslice(y_burn, dims=n+1))
+    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n+1, t)
+        yt .= selectdim(resid(ε_burn), n + 1, t)
         if t > 1
             # autoregressive component
-            for r = 1:rank(A_burn)
-                yt .+= loadings(A_burn)[r,t-1] .* tucker(selectdim(y_burn, n+1, t-1), U[r])
+            for r in 1:rank(A_burn)
+                yt .+= loadings(A_burn)[r, t - 1] .*
+                       tucker(selectdim(y_burn, n + 1, t - 1), U[r])
             end
         end
     end
 
     # simulate data
     y_sim = similar(data(model))
-    for (t, yt) ∈ pairs(eachslice(y_sim, dims=n+1))
+    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
         if t == 1
-            yt .= selectdim(y_burn, n+1, burn+1)
+            yt .= selectdim(y_burn, n + 1, burn + 1)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n+1, t-1)
+            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
             # autoregressive component
-            for r = 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r,t-1] .* tucker(selectdim(y_sim, n+1, t-1), U[r])
+            for r in 1:rank(A_sim)
+                yt .+= loadings(A_sim)[r, t - 1] .*
+                       tucker(selectdim(y_sim, n + 1, t - 1), U[r])
             end
         end
     end
@@ -209,14 +204,13 @@ alternating least squares (ALS) algorithm for obtaining the least squares and
 maximum likelihood estimates of the static model, for respectively white noise
 and tensor normal errors.
 """
-function fit!(
-    model::AbstractTensorAutoregression;
-    init_method::NamedTuple=(coef=:data, dist=:data), 
-    ϵ::AbstractFloat=1e-4, 
-    max_iter::Integer=1000, 
-    verbose::Bool=false
-)
-    keys(init_method) ⊇ (:coef, :dist) || error("init_method must be a NamedTuple with keys :coef and :dist.")
+function fit!(model::AbstractTensorAutoregression;
+              init_method::NamedTuple = (coef = :data, dist = :data),
+              ϵ::AbstractFloat = 1e-4,
+              max_iter::Integer = 1000,
+              verbose::Bool = false)
+    keys(init_method) ⊇ (:coef, :dist) ||
+        error("init_method must be a NamedTuple with keys :coef and :dist.")
 
     # model summary
     if verbose
@@ -226,11 +220,12 @@ function fit!(
         println("Number of observations: $(size(data(model))[end])")
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
-        println("Coefficient tensor: ", coef(model) isa StaticKruskal ? "static" : "dynamic")
+        println("Coefficient tensor: ",
+                coef(model) isa StaticKruskal ? "static" : "dynamic")
         println("===========================")
         println()
     end
-    
+
     # initialization of model parameters
     init!(model, init_method)
 
@@ -279,15 +274,16 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
     n = ndims(data(model)) - 1
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
+    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
+         for r in 1:rank(model)]
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
     # last observation
-    yT = selectdim(data(model), n+1, last(dims))
+    yT = selectdim(data(model), n + 1, last(dims))
     # forecast
-    for h = 1:periods, r = 1:rank(model)
-        selectdim(forecasts, n+1, h) .= loadings(model)[r]^h * tucker(yT, U[r].^h)
+    for h in 1:periods, r in 1:rank(model)
+        selectdim(forecasts, n + 1, h) .= loadings(model)[r]^h * tucker(yT, U[r] .^ h)
     end
 
     return forecasts
@@ -301,15 +297,17 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
     particles = particle_sampler(model, periods)
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i+n][:,r] * factors(model)[i][:,r]' for i = 1:n] for r = 1:rank(model)]
+    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
+         for r in 1:rank(model)]
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
     # last observation
-    yT = selectdim(data(model), n+1, last(dims))
+    yT = selectdim(data(model), n + 1, last(dims))
     # forecast
-    for h = 1:periods, r = 1:rank(model)
-        selectdim(forecasts, n+1, h) .= mean(prod(particles[r,:,1:h], dims=2)) * tucker(yT, U[r].^h)
+    for h in 1:periods, r in 1:rank(model)
+        selectdim(forecasts, n + 1, h) .= mean(prod(particles[r, :, 1:h], dims = 2)) *
+                                          tucker(yT, U[r] .^ h)
     end
 
     return forecasts
@@ -325,12 +323,10 @@ simulation.
 If `orth` is true, the orthogonalized impulse response functions are
 computed.
 """
-function irf(
-    model::AbstractTensorAutoregression, 
-    periods::Integer; 
-    α::Real=.05, 
-    orth::Bool=false,
-)   
+function irf(model::AbstractTensorAutoregression,
+             periods::Integer;
+             α::Real = 0.05,
+             orth::Bool = false)
     if model isa StaticTensorAutoregression
         irf_type = StaticIRF
     else

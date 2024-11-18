@@ -18,7 +18,7 @@ function matricize(A::AbstractArray, n)
     m = setdiff(1:ndims(A), n)
     perm = [n; m]
 
-    return reshape(permutedims(A, perm), prod(dims[n]), prod(dims[m])) 
+    return reshape(permutedims(A, perm), prod(dims[n]), prod(dims[m]))
 end
 
 """
@@ -40,7 +40,7 @@ Tucker operator along modes `n` of tensor `G` with matrices `A`.
 """
 function tucker(G::AbstractArray, A::AbstractVector, n)
     dims = collect(size(G))
-    for (i, k) ∈ enumerate(n)
+    for (i, k) in enumerate(n)
         Gk = matricize(G, k)
         dims[k] = size(A[i], 1)
         G = tensorize(A[i] * Gk, k, dims)
@@ -56,8 +56,8 @@ tucker(G::AbstractArray, A::AbstractVector) = tucker(G, A, 1:length(A))
 Identity tensor of `n` modes with mode size `R`.
 """
 function (I::UniformScaling)(n::Integer, R::Integer)
-    Id = zeros((R for _ = 1:n)...)
-    for i = 1:R
+    Id = zeros((R for _ in 1:n)...)
+    for i in 1:R
         Id[repeat([i], n)...] = one(Float64)
     end
 
