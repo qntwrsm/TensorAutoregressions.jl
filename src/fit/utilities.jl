@@ -305,7 +305,7 @@ function init!(A::AbstractKruskal, y::AbstractArray, fixed::NamedTuple, method::
             intercept(A)[r] = haskey(fixed, :intercept) ? fixed.intercept[r] : βr[1]
             dynamics(A).diag[r] .= haskey(fixed, :dynamics) ? fixed.dynamics.diag[r] : βr[2]
         end
-        cov(A).data .= I - dynamics(A) * dynamics(A)'
+        cov(A) .= I - dynamics(A) * dynamics(A)'
     end
 
     return nothing

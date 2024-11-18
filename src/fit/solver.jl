@@ -393,7 +393,7 @@ function update_transition!(
     function f_intercept(x, r)
         f = zero(x)
         for t = 2:T
-           f -= 2 * (loadings(A)[r,t] - dynamics(A)[r,r] * loadings(A)[r,t-1]) * x
+           f -= 2 * (loadings(A)[r,t] - dynamics(A).diag[r] * loadings(A)[r,t-1]) * x
         end
         f = x^2 + f / (T - 1)
 
@@ -418,17 +418,17 @@ function update_transition!(
         for r = 1:rank(A)
             objective(x) = f_dynamics(x, r)
             res = optimize(f_dynamics, 0.0, 1.0)
-            dynamics(A)[r,r] = Optim.minimizer(res)
+            dynamics(A).diag[r] = Optim.minimizer(res)
         end
     end
     if !haskey(fixed, :intercept)
         for r = 1:rank(A)
             objective(x) = f_intercept(x, r)
-            res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A)[r,r]))
+            res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A).diag[r]))
             intercept(A)[r] = Optim.minimizer(res)
         end
     end
-    cov(A).data .= I - dynamics(A) * dynamics(A)'
+    cov(A) .= I - dynamics(A) * dynamics(A)'
 
     return nothing
 end
