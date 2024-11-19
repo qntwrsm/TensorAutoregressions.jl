@@ -162,11 +162,13 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
 end
 
 """
-    fit!(model; init_method=(coef=:data, dist=:data), ϵ=1e-4, max_iter=1000, verbose=false) -> model
+    fit!(model; init_method=(coef=:data, dist=:data), ϵ=1e-4, max_iter=1000, verbose=false)
+        -> model
 
 Fit the tensor autoregressive model described by `model` to the data with tolerance `ϵ` and
 maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
-is printed. `init_method` indicates which method is used for initialization of the parameters.
+is printed. `init_method` indicates which method is used for initialization of the
+parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
@@ -196,21 +198,32 @@ function fit!(model::AbstractTensorAutoregression;
     # initialization of model parameters
     init!(model, init_method)
 
-    # instantiate model
-    model_prev = copy(model)
-
     # alternating least squares
     iter = 0
-    δ = Inf
-    while δ > ϵ && iter < max_iter
+    obj = -Inf
+    converged = false
+    violation = false
+    while !converged && iter < max_iter
         # update model
         update!(model)
 
-        # compute maximum abs change in parameters
-        δ = absdiff(model, model_prev)
+        # update objective function
+        obj_prev = obj
+        obj = objective(model)
 
-        # store model
-        copyto!(model_prev, model)
+        # non-decrease violation
+        if obj - obj_prev < 0
+            violation = true
+            if verbose
+                println("Objective function value decreased from $iter to $(iter + 1).")
+                println()
+            end
+            break
+        end
+
+        # convergence
+        δ = 2 * abs(obj - obj_prev) / (abs(obj) + abs(obj_prev))
+        converged = δ < ϵ
 
         # update iteration counter
         iter += 1
@@ -220,10 +233,13 @@ function fit!(model::AbstractTensorAutoregression;
     if verbose
         println("Optimization summary")
         println("====================")
-        println("Convergence: ", δ < ϵ ? "success" : "failed")
-        println("Maximum absolute change: $δ")
+        println("Convergence: ", converged ? "success" : "failed")
+        println("Non-decrease violation: $violation")
         println("Iterations: $iter")
         println("Objective function value: $(objective(model))")
+        println("aic: $(aic(model))")
+        println("aicc: $(aicc(model))")
+        println("bic: $(bic(model))")
         println("====================")
     end
 
