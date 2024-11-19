@@ -111,12 +111,12 @@ end
 Orthogonalize impulse responses `Ψ` using the Cholesky decomposition of covariance matrix
 `Σ`.
 """
-function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
+function orthogonalize(Ψ::AbstractArray, Σ::Symmetric)
     n = ndims(Ψ) - 1
     R = (n ÷ 2 + 1):n
 
     # Cholesky decomposition of Σ
-    C = cholesky(Hermitian(Σ))
+    C = cholesky(Σ)
 
     # orthogonalize responses
     Ψ_orth = similar(Ψ)
@@ -128,7 +128,7 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
 end
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).U for Σi in Σ]
+    C = getproperty.(cholesky.(Σ), :U)
 
     # orthogonalize responses
     Ψ_orth = tucker(Ψ, C)
@@ -371,7 +371,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     n = ndims(resid(ε)) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = [cholesky(Hermitian(Σi)).L for Σi in cov(ε)]
+    C = getproperty.(cholesky.(cov(ε)), :L)
 
     ε_burn = TensorNormal(similar(resid(ε), dims[1:n]..., burn), cov(ε))
     # burn-in
