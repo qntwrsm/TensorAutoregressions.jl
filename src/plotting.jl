@@ -1,10 +1,9 @@
 #=
 plotting.jl
 
-    Provides a collection of visualization methods for tensor autoregressive 
-    models, such as impulse response functions, forecasts, data plots, and 
-    Kruskal coefficient tensor and tensor error covariance structure 
-    visualization.
+    Provides a collection of visualization methods for tensor autoregressive models, such as
+    impulse response functions, forecasts, data plots, and Kruskal coefficient tensor and
+    tensor error covariance structure visualization.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -58,14 +57,11 @@ function data_plot(model::AbstractTensorAutoregression)
     colors = resample_cmap(:viridis, prod(dims[m]))
     for (idx, ax) in pairs(IndexCartesian(), axs)
         y = selectdim(data(model), maxmode, idx[1])
-        series!(ax,
-                reshape(selectdim(y, n - 1, idx[2]), :, last(dims)),
-                color = colors)
+        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, last(dims)), color = colors)
     end
 
     return fig
 end
-
 function data_plot(model::AbstractTensorAutoregression, labels, time)
     dims = size(data(model))
     n = ndims(data(model)) - 1
@@ -116,10 +112,7 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
 
     # grid titles
     for (i, grid) in pairs(grids)
-        Label(grid[1, :, Top()],
-              labels[maxmode][i],
-              valign = :bottom,
-              font = :bold)
+        Label(grid[1, :, Top()], labels[maxmode][i], valign = :bottom, font = :bold)
     end
     # axis titles
     for grid in grids[(end - rows + 1):end]
@@ -134,9 +127,7 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
     colors = resample_cmap(:viridis, prod(dims[m]))
     for (idx, ax) in pairs(IndexCartesian(), axs)
         y = selectdim(data(model), maxmode, idx[1])
-        series!(ax,
-                reshape(selectdim(y, n - 1, idx[2]), :, last(dims)),
-                color = colors,
+        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, last(dims)), color = colors,
                 labels = sub_labels)
     end
 
@@ -144,11 +135,7 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
     if dims[maxmode] == length(indices)
         Legend(fig[:, cols + 1], axs[1], "sectors")
     else
-        Legend(fig[rows, cols],
-               axs[1],
-               "sectors",
-               tellwidth = false,
-               halign = :left)
+        Legend(fig[rows, cols], axs[1], "sectors", tellwidth = false, halign = :left)
     end
 
     return fig
@@ -157,8 +144,8 @@ end
 """
     kruskal_plot(A[, labels, time]) -> figs
 
-Plot factors and loadings of the Kruskal coefficient tensor `A` with optionally
-specified `labels` and `time`.
+Plot factors and loadings of the Kruskal coefficient tensor `A` with optionally specified
+`labels` and `time`.
 """
 function kruskal_plot(A::StaticKruskal)
     dims = size(A)
@@ -174,7 +161,6 @@ function kruskal_plot(A::StaticKruskal)
 
     return fig
 end
-
 function kruskal_plot(A::StaticKruskal, labels)
     dims = size(A)
     n = length(dims) ÷ 2
@@ -205,7 +191,6 @@ function kruskal_plot(A::StaticKruskal, labels)
 
     return fig
 end
-
 function kruskal_plot(A::DynamicKruskal)
     dims = size(A)
     n = length(dims) ÷ 2
@@ -223,7 +208,6 @@ function kruskal_plot(A::DynamicKruskal)
 
     return figs
 end
-
 function kruskal_plot(A::DynamicKruskal, labels, time)
     dims = size(A)
     n = length(dims) ÷ 2
@@ -267,8 +251,7 @@ end
 """
     cov_plot(ε[, labels]) -> fig
 
-Plot the tensor error covariance structure `ε` with optionally specified
-`labels`.
+Plot the tensor error covariance structure `ε` with optionally specified `labels`.
 """
 function cov_plot(ε::AbstractTensorErrorDistribution)
     # setup figure
@@ -281,7 +264,6 @@ function cov_plot(ε::AbstractTensorErrorDistribution)
 
     return fig
 end
-
 function cov_plot(ε::AbstractTensorErrorDistribution, labels)
     dims = size.(cov(ε), 1)
     n = length(dims)
@@ -316,9 +298,8 @@ end
 """
     nested_labels!(grid, dims, n, i, labels, loc)
 
-Add recursively nested `i`-th label from `n`nd level from `labels` to a grid
-layout `grid` with dimensions `dims` for the levels and `loc` indicating the
-location of the labels.
+Add recursively nested `i`-th label from `n`nd level from `labels` to a grid layout `grid`
+with dimensions `dims` for the levels and `loc` indicating the location of the labels.
 """
 function nested_labels!(grid, dims, n, i, labels, loc)
     # terminate at final to last level (last level are axis ticks)
@@ -355,9 +336,9 @@ end
 """
     irf_plot(irfs, impulse, response[, time]) -> fig
 
-Plot the impulse response function `irfs` for the response `response` to the
-impulse `impulse`. When `irfs` is dynamic `time` can be provided to plot the
-impulse response function for a specific time period.
+Plot the impulse response function `irfs` for the response `response` to the impulse
+`impulse`. When `irfs` is dynamic `time` can be provided to plot the impulse response
+function for a specific time period.
 """
 function irf_plot(irfs::StaticIRF, impulse, response)
     ψ = irf(irfs, impulse, response)
@@ -367,11 +348,8 @@ function irf_plot(irfs::StaticIRF, impulse, response)
     fig = Figure()
     ax = Axis(fig[1, 1],
               title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                      "Impulse Response Function",
-              titlealign = :left,
-              titlecolor = :gray50,
-              xlabel = "periods",
-              xticks = (0:periods, ["$h" for h in 0:periods]))
+                      "Impulse Response Function", titlealign = :left, titlecolor = :gray50,
+              xlabel = "periods", xticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
     lines!(ax, 0:periods, ψ, color = :black)
@@ -384,7 +362,6 @@ function irf_plot(irfs::StaticIRF, impulse, response)
 
     return fig
 end
-
 function irf_plot(irfs::DynamicIRF, impulse, response)
     ψ = irf(irfs, impulse, response)
     periods = size(ψ, 1) - 1
@@ -392,14 +369,10 @@ function irf_plot(irfs::DynamicIRF, impulse, response)
 
     # setup figure
     fig = Figure()
-    ax = Axis3(fig[1, 1],
-               azimuth = π / 4,
+    ax = Axis3(fig[1, 1], azimuth = π / 4,
                title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                       "Impulse Response Function",
-               titlealign = :left,
-               titlecolor = :gray50,
-               xlabel = "time",
-               ylabel = "periods",
+                       "Impulse Response Function", titlealign = :left,
+               titlecolor = :gray50, xlabel = "time", ylabel = "periods",
                yticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
@@ -407,21 +380,16 @@ function irf_plot(irfs::DynamicIRF, impulse, response)
 
     return fig
 end
-
 function irf_plot(irfs::DynamicIRF, impulse, response, time)
     ψ = irf(irfs, impulse, response, time)
     periods = size(ψ, 1) - 1
 
     # setup figure
     fig = Figure()
-    ax = Axis3(fig[1, 1],
-               azimuth = π / 4,
+    ax = Axis3(fig[1, 1], azimuth = π / 4,
                title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                       "Impulse Response Function",
-               titlealign = :left,
-               titlecolor = :gray50,
-               xlabel = "time",
-               ylabel = "periods",
+                       "Impulse Response Function", titlealign = :left,
+               titlecolor = :gray50, xlabel = "time", ylabel = "periods",
                yticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
@@ -429,7 +397,6 @@ function irf_plot(irfs::DynamicIRF, impulse, response, time)
 
     return fig
 end
-
 function irf_plot(irfs::DynamicIRF, impulse, response, time::Integer)
     ψ = irf(irfs, impulse, response, time)
     periods = length(ψ) - 1
@@ -438,11 +405,8 @@ function irf_plot(irfs::DynamicIRF, impulse, response, time::Integer)
     fig = Figure()
     ax = Axis(fig[1, 1],
               title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                      "Impulse Response Function",
-              titlealign = :left,
-              titlecolor = :gray50,
-              xlabel = "periods",
-              xticks = (0:periods, ["$h" for h in 0:periods]))
+                      "Impulse Response Function", titlealign = :left, titlecolor = :gray50,
+              xlabel = "periods", xticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
     lines!(ax, 0:periods, ψ, color = :black)

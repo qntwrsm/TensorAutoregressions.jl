@@ -1,10 +1,9 @@
 #=
 types.jl
 
-    Provides a collection of types for working with tensor autoregressive
-    models, such as the Kruskal tensor for the autoregressive coefficients and
-    tensor error distributions, as well as the main tensor autoregressive model
-    itself.
+    Provides a collection of types for working with tensor autoregressive models, such as
+    the Kruskal tensor for the autoregressive coefficients and tensor error distributions,
+    as well as the main tensor autoregressive model itself.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -24,8 +23,7 @@ abstract type AbstractKruskal end
 
 Static Kruskal tensor of rank `R` with loadings `λ` and factor matrices `U`.
 """
-struct StaticKruskal{Tλ <: AbstractVector,
-                     TU <: AbstractVector} <: AbstractKruskal
+struct StaticKruskal{Tλ <: AbstractVector, TU <: AbstractVector} <: AbstractKruskal
     λ::Tλ
     U::TU
     R::Int
@@ -45,23 +43,16 @@ end
 Dynamic Kruskal tensor of rank `R` with dynamic loadings `λ` and factor matrices
 `U`.
 """
-struct DynamicKruskal{Tλ <: AbstractMatrix,
-                      Tα <: AbstractVector,
-                      Tϕ <: Diagonal,
-                      TΣ <: Diagonal,
-                      TU <: AbstractVector} <: AbstractKruskal
+struct DynamicKruskal{Tλ <: AbstractMatrix, Tα <: AbstractVector, Tϕ <: Diagonal,
+                      TΣ <: Diagonal, TU <: AbstractVector} <: AbstractKruskal
     λ::Tλ
     α::Tα
     ϕ::Tϕ
     Σ::TΣ
     U::TU
     R::Int
-    function DynamicKruskal(λ::AbstractMatrix,
-                            α::AbstractVector,
-                            ϕ::Diagonal,
-                            Σ::Diagonal,
-                            U::AbstractVector,
-                            R::Integer)
+    function DynamicKruskal(λ::AbstractMatrix, α::AbstractVector, ϕ::Diagonal, Σ::Diagonal,
+                            U::AbstractVector, R::Integer)
         length(α) == R || error("α must be a vector of length R.")
         size(ϕ, 1) == R || error("ϕ must be a diagonal matrix of rank R.")
         size(Σ, 1) == R || error("Σ must be a diagonal matrix of rank R.")
@@ -126,11 +117,9 @@ abstract type AbstractTensorErrorDistribution end
 """
     WhiteNoise <: AbstractTensorErrorDistribution
 
-White noise model of tensor errors `ε` with covariance matrix `Σ` of
-``vec(ε)``.
+White noise model of tensor errors `ε` with covariance matrix `Σ` of ``vec(ε)``.
 """
-struct WhiteNoise{Tε <: AbstractArray,
-                  TΣ <: Symmetric} <: AbstractTensorErrorDistribution
+struct WhiteNoise{Tε <: AbstractArray, TΣ <: Symmetric} <: AbstractTensorErrorDistribution
     ε::Tε
     Σ::Symmetric
     function WhiteNoise(ε::AbstractArray, Σ::Symmetric)
@@ -144,11 +133,11 @@ end
 """
     TensorNormal <: AbstractTensorErrorDistribution
 
-Tensor normal model of tensor errors `ε` with separable covariance matrix
-`Σ` along each mode of the tensor.
+Tensor normal model of tensor errors `ε` with separable covariance matrix `Σ` along each
+mode of the tensor.
 """
-struct TensorNormal{Tε <: AbstractArray,
-                    TΣ <: AbstractVector} <: AbstractTensorErrorDistribution
+struct TensorNormal{Tε <: AbstractArray, TΣ <: AbstractVector} <:
+       AbstractTensorErrorDistribution
     ε::Tε
     Σ::TΣ
     function TensorNormal(ε::AbstractArray, Σ::AbstractVector)
@@ -203,8 +192,8 @@ abstract type AbstractTensorAutoregression <: StatisticalModel end
 """
     StaticTensorAutoregression <: AbstractTensorAutoregression
 
-Tensor autoregressive model with tensor error distribution `ε` and static
-Kruskal tensor representation `A`.
+Tensor autoregressive model with tensor error distribution `ε` and static Kruskal tensor
+representation `A`.
 """
 struct StaticTensorAutoregression{Ty <: AbstractArray,
                                   Tε <: AbstractTensorErrorDistribution,
@@ -229,8 +218,8 @@ end
 """
     DynamicTensorAutoregression <: AbstractTensorAutoregression
 
-Tensor autoregressive model with tensor error distribution `ε` and dynamic
-Kruskal tensor representation `A`.
+Tensor autoregressive model with tensor error distribution `ε` and dynamic Kruskal tensor
+representation `A`.
 """
 struct DynamicTensorAutoregression{Ty <: AbstractArray,
                                    Tε <: AbstractTensorErrorDistribution,
@@ -293,9 +282,9 @@ abstract type AbstractIRF end
 """
     StaticIRF <: AbstractIRF
 
-Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
-`upper` as the lower and upper bounds of the ``α``% confidence interval, and
-`orth` as whether the IRF is orthogonalized.
+Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
+the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
+is orthogonalized.
 """
 struct StaticIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ
@@ -311,9 +300,9 @@ end
 """
     DynamicIRF <: AbstractIRF
 
-Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
-`upper` as the lower and upper bounds of the ``α``% confidence interval, and
-`orth` as whether the IRF is orthogonalized.
+Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
+the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
+is orthogonalized.
 """
 struct DynamicIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ

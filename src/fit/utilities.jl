@@ -1,9 +1,8 @@
 #=
 utilities.jl
 
-    Provides a collection of utility tools for fitting tensor autoregressive
-    models, such as initialization, convergence checks, and log-likelihood
-    evaluation.
+    Provides a collection of utility tools for fitting tensor autoregressive models, such as
+    initialization, convergence checks, and log-likelihood evaluation.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -13,8 +12,7 @@ utilities.jl
 """
     objective(model) -> f
 
-Wrapper for objective function evaluation for tensor autoregressive model
-`model`.
+Wrapper for objective function evaluation for tensor autoregressive model `model`.
 """
 objective(model::AbstractTensorAutoregression) = loglikelihood(model)
 function objective(model::StaticTensorAutoregression)
@@ -66,7 +64,6 @@ function loglikelihood(model::StaticTensorAutoregression)
 
     return ll
 end
-
 function loglikelihood(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
@@ -133,7 +130,6 @@ function update_resid!(model::StaticTensorAutoregression)
 
     return nothing
 end
-
 function update_resid!(model::DynamicTensorAutoregression)
     dims = size(y)
     n = ndims(y) - 1
@@ -165,39 +161,30 @@ end
 Initialize the tensor autoregressive model `model` by `method`.
 
 When `method` is set to `:data`:
-- Initialization of the Kruskal coefficient tensor is based on ridge regression of
-the vectorized model combined with a CP decomposition. In case of a dynamic
-Kruskal tensor the dynamic paramaters are obtained from the factor model
-representation of the model.
-- Initiliazation of the tensor error distribution is based on the sample
-covariance estimate of the residuals. In case of separability of the covariance
-matrix a mode specific sample covariance is calculated.
+
+  - Initialization of the Kruskal coefficient tensor is based on ridge regression of the
+    vectorized model combined with a CP decomposition. In case of a dynamic Kruskal tensor
+    the dynamic paramaters are obtained from the factor model representation of the model.
+  - Initiliazation of the tensor error distribution is based on the sample covariance
+    estimate of the residuals. In case of separability of the covariance matrix a mode
+    specific sample covariance is calculated.
 
 When `method` is set to `:random`:
-- Initialization of the Kruskal coefficient tensor is based on a randomly sampled
-CP decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are
-obtained from the factor model representation of the model.
-- Initiliazation of the tensor error distribution is based on a randomly sampled
-covariance matrix from an inverse Wishart distribution.
 
-When `method` is set to `:none` no initialization is performed and model is
-assumed to have been initialized manually before fitting.
+  - Initialization of the Kruskal coefficient tensor is based on a randomly sampled CP
+    decomposition. In case of a dynamic Kruskal tensor the dynamic paramaters are obtained
+    from the factor model representation of the model.
+  - Initiliazation of the tensor error distribution is based on a randomly sampled
+    covariance matrix from an inverse Wishart distribution.
+
+When `method` is set to `:none` no initialization is performed and model is assumed to have
+been initialized manually before fitting.
 """
 function init!(model::AbstractTensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    if method.coef != :none
-        init!(coef(model),
-              data(model),
-              method.coef)
-    end
-
+    method.coef != :none && init!(coef(model), data(model), method.coef)
     # initialize tensor error distribution
-    if method.dist != :none
-        init!(dist(model),
-              data(model),
-              coef(model),
-              method.dist)
-    end
+    method.dist != :none && init!(dist(model), data(model), coef(model), method.dist)
 
     return nothing
 end
@@ -208,15 +195,15 @@ end
 Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`.
 
 When `method` is set to `:data`:
-Initialization of the Kruskal coefficient tensor is based on ridge regression of
-the vectorized model combined with a CP decomposition.
+Initialization of the Kruskal coefficient tensor is based on ridge regression of the
+vectorized model combined with a CP decomposition.
 
 When `method` is set to `:random`:
-Initialization of the Kruskal coefficient tensor is based on a randomly sampled
-CP decomposition.
+Initialization of the Kruskal coefficient tensor is based on a randomly sampled CP
+decomposition.
 
-In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the
-factor model representation of the model.
+In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the factor
+model representation of the model.
 """
 function init!(A::AbstractKruskal, y::AbstractArray, method::Symbol)
     dims = size(y)
@@ -300,21 +287,19 @@ end
 """
     init!(ε, y, A, method)
 
-Initialize the tensor error distribution `ε` given the data `y` and the Kruskal
-coefficent tensor `A` using `method`.
+Initialize the tensor error distribution `ε` given the data `y` and the Kruskal coefficent
+tensor `A` using `method`.
 
 When `method` is set to `:data`:
-Initiliazation of the tensor error distribution is based on the sample
-covariance estimate of the residuals. In case of separability of the covariance
-matrix a mode specific sample covariance is calculated.
+Initiliazation of the tensor error distribution is based on the sample covariance estimate
+of the residuals. In case of separability of the covariance matrix a mode specific sample
+covariance is calculated.
 
 When `method` is set to `:random`:
-Initialization of the tensor error distribution is based on a randomly sampled
-covariance matrix from an inverse Wishart distribution.
+Initialization of the tensor error distribution is based on a randomly sampled covariance
+matrix from an inverse Wishart distribution.
 """
-function init!(ε::AbstractTensorErrorDistribution,
-               y::AbstractArray,
-               A::AbstractKruskal,
+function init!(ε::AbstractTensorErrorDistribution, y::AbstractArray, A::AbstractKruskal,
                method::Symbol)
     dims = size(y)
     n = ndims(y) - 1

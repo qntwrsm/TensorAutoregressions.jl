@@ -1,10 +1,10 @@
 #=
 utilities.jl
 
-    Provides a collection of utility tools for working with tensor
-    autoregressive models, such as moving average representation, orthogonalize
-    responses, state space form for the dynamic model, as well as filter and
-    smoother routines, simulation, and particle sampler.
+    Provides a collection of utility tools for working with tensor autoregressive models,
+    such as moving average representation, orthogonalize responses, state space form for the
+    dynamic model, as well as filter and smoother routines, simulation, and particle
+    sampler.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -12,27 +12,15 @@ utilities.jl
 =#
 
 """
-    confidence_bounds(
-        model,
-        periods,
-        α,
-        orth,
-        samples=100,
-        burn=100,
-        rng=Xoshiro()
-    ) -> (lower, upper)
+    confidence_bounds(model, periods, α, orth, samples=100, burn=100, rng=Xoshiro())
+    -> (lower, upper)
 
-Compute Monte Carlo `α`% confidence bounds for impulse response functions of the
-tensor autoregressive model given by `model`. The confidence bounds are
-estimated using a Monte Carlo simulation with `samples` and a burn-in period
-`burn`.
+Compute Monte Carlo `α`% confidence bounds for impulse response functions of the tensor
+autoregressive model given by `model`. The confidence bounds are estimated using a Monte
+Carlo simulation with `samples` and a burn-in period `burn`.
 """
-function confidence_bounds(model::AbstractTensorAutoregression,
-                           periods::Integer,
-                           α::Real,
-                           orth::Bool,
-                           samples::Integer = 100,
-                           burn::Integer = 100,
+function confidence_bounds(model::AbstractTensorAutoregression, periods::Integer, α::Real,
+                           orth::Bool, samples::Integer = 100, burn::Integer = 100,
                            rng::AbstractRNG = Xoshiro())
     Ψ = Vector{Array}(undef, samples)
 
@@ -67,8 +55,8 @@ end
 """
     moving_average(model, n) -> Ψ
 
-Moving average, ``MA(∞)``, representation of the tensor autoregressive model
-`model`, computed up to the `n`th term.
+Moving average, ``MA(∞)``, representation of the tensor autoregressive model `model`,
+computed up to the `n`th term.
 """
 function moving_average(model::StaticTensorAutoregression, n::Integer)
     dims = size(coef(model))
@@ -85,7 +73,6 @@ function moving_average(model::StaticTensorAutoregression, n::Integer)
 
     return Ψ
 end
-
 function moving_average(model::DynamicTensorAutoregression, n::Integer)
     dims = size(coef(model))
     R = (length(dims) ÷ 2 + 1):(length(dims) - 1)
@@ -121,8 +108,8 @@ end
 """
     orthogonalize(Ψ, Σ) -> Ψ_orth
 
-Orthogonalize impulse responses `Ψ` using the Cholesky decomposition of
-covariance matrix `Σ`.
+Orthogonalize impulse responses `Ψ` using the Cholesky decomposition of covariance matrix
+`Σ`.
 """
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
     n = ndims(Ψ) - 1
@@ -139,7 +126,6 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractMatrix)
 
     return Ψ_orth
 end
-
 function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
     # Cholesky decompositions of Σᵢ
     C = [cholesky(Hermitian(Σi)).U for Σi in Σ]
@@ -151,22 +137,15 @@ function orthogonalize(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    particle_sampler(
-        model,
-        periods;
-        time=last(size(coef(model))),
-        samples=1000,
-        rng=Xoshiro()
-    ) -> particles
+    particle_sampler(model, periods; time=last(size(coef(model))), samples=1000,
+                     rng=Xoshiro()) -> particles
 
 Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic tensor
-autoregressive model `model`, with the number of forward periods given by
-`periods` starting from `time` and using random number generator `rng`.
+autoregressive model `model`, with the number of forward periods given by `periods` starting
+from `time` and using random number generator `rng`.
 """
-function particle_sampler(model::DynamicTensorAutoregression,
-                          periods::Integer;
-                          time::Integer = last(size(coef(model))),
-                          samples::Integer = 1000,
+function particle_sampler(model::DynamicTensorAutoregression, periods::Integer;
+                          time::Integer = last(size(coef(model))), samples::Integer = 1000,
                           rng::AbstractRNG = Xoshiro())
     # transition coefficients
     T = dynamics(coef(model))
@@ -196,8 +175,8 @@ end
 """
     collapse(model) -> (A_low, Z_basis)
 
-Low-dimensional collapsing matrices for the dynamic tensor autoregressive model
-`model` following the approach of Jungbacker and Koopman (2015).
+Low-dimensional collapsing matrices for the dynamic tensor autoregressive model `model`
+following the approach of Jungbacker and Koopman (2015).
 """
 function collapse(model::DynamicTensorAutoregression)
     dims = size(data(model))
@@ -230,8 +209,8 @@ end
 """
     state_space(model) -> (y_low, Z_low, H_low, a1, P1)
 
-State space form of the collapsed dynamic tensor autoregressive model `model`
-following the approach of Jungbacker and Koopman (2015).
+State space form of the collapsed dynamic tensor autoregressive model `model` following the
+approach of Jungbacker and Koopman (2015).
 """
 function state_space(model::DynamicTensorAutoregression)
     dims = size(data(model))
@@ -265,9 +244,9 @@ end
 """
     filter(model) -> (a, P, v, F, K)
 
-Collapsed Kalman filter for the dynamic tensor autoregressive model `model`.
-Returns the filtered state `a`, covariance `P`, forecast error `v`, forecast
-error variance `F`, and Kalman gain `K`.
+Collapsed Kalman filter for the dynamic tensor autoregressive model `model`. Returns the
+filtered state `a`, covariance `P`, forecast error `v`, forecast error variance `F`, and
+Kalman gain `K`.
 """
 function filter(model::DynamicTensorAutoregression)
     # collapsed state space system
@@ -309,8 +288,8 @@ end
 """
     smoother(model) -> (α, V, Γ)
 
-Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`.
-Returns the smoothed state `α`, covariance `V`, and autocovariance `Γ`.
+Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`. Returns the
+smoothed state `α`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
@@ -351,16 +330,12 @@ end
 """
     simulate(A, burn, rng) -> (A_sim, A_burn)
 
-Simulate the dynamic loadings from the dynamic Kruskal coefficient tensor `A`
-with a burn-in period of `burn` using the random number generator `rng`.
+Simulate the dynamic loadings from the dynamic Kruskal coefficient tensor `A` with a burn-in
+period of `burn` using the random number generator `rng`.
 """
 function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
-    A_burn = DynamicKruskal(similar(loadings(A), size(loadings(A), 1), burn),
-                            intercept(A),
-                            dynamics(A),
-                            cov(A),
-                            factors(A),
-                            rank(A))
+    A_burn = DynamicKruskal(similar(loadings(A), size(loadings(A), 1), burn), intercept(A),
+                            dynamics(A), cov(A), factors(A), rank(A))
     dist = MvNormal(cov(A_burn))
     # burn-in
     for (t, λt) in pairs(eachslice(loadings(A_burn), dims = 2))
@@ -388,8 +363,8 @@ end
 """
     simulate(ε, burn, rng) -> (ε_sim, ε_burn)
 
-Simulate from the tensor error distribution `ε` with a burn-in period of `burn`
-using the random number generator `rng`.
+Simulate from the tensor error distribution `ε` with a burn-in period of `burn` using the
+random number generator `rng`.
 """
 simulate(ε::WhiteNoise, burn::Integer, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
 function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
@@ -399,8 +374,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     # Cholesky decompositions of Σᵢ
     C = [cholesky(Hermitian(Σi)).L for Σi in cov(ε)]
 
-    ε_burn = TensorNormal(similar(resid(ε), dims[1:n]..., burn),
-                          cov(ε))
+    ε_burn = TensorNormal(similar(resid(ε), dims[1:n]..., burn), cov(ε))
     # burn-in
     for εt in eachslice(resid(ε_burn), dims = n + 1)
         # sample independent random normals and use tucker product with Cholesky

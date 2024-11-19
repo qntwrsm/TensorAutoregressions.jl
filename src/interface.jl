@@ -1,8 +1,8 @@
 #=
 interface.jl
 
-    Provides a collection of interface tools for working with tensor autoregressive
-    models, such as estimation, forecasting, and impulse response analysis.
+    Provides a collection of interface tools for working with tensor autoregressive models,
+    such as estimation, forecasting, and impulse response analysis.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -10,20 +10,12 @@ interface.jl
 =#
 
 """
-    TensorAutoregression(
-        y,
-        R;
-        dynamic=false,
-        dist=:white_noise
-    ) -> model
+    TensorAutoregression(y, R; dynamic=false, dist=:white_noise) -> model
 
-Constructs a tensor autoregressive model for data `y` with autoregressive
-coefficient tensor of rank `R`, potentially dynamic, and tensor error
-distribution `dist`.
+Constructs a tensor autoregressive model for data `y` with autoregressive coefficient tensor
+of rank `R`, potentially dynamic, and tensor error distribution `dist`.
 """
-function TensorAutoregression(y::AbstractArray,
-                              R::Integer;
-                              dynamic::Bool = false,
+function TensorAutoregression(y::AbstractArray, R::Integer; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
     dims = size(y)
     n = ndims(y) - 1
@@ -34,17 +26,13 @@ function TensorAutoregression(y::AbstractArray,
 
     # instantiate Kruskal autoregressive tensor
     if dynamic
-        A = DynamicKruskal(similar(y, R, last(dims) - 1),
-                           similar(y, R),
-                           Diagonal(similar(y, R)),
-                           Diagonal(similar(y, R)),
-                           [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)],
-                           R)
+        A = DynamicKruskal(similar(y, R, last(dims) - 1), similar(y, R),
+                           Diagonal(similar(y, R)), Diagonal(similar(y, R)),
+                           [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
         model = DynamicTensorAutoregression
     else
         A = StaticKruskal(similar(y, R),
-                          [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)],
-                          R)
+                          [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
         model = StaticTensorAutoregression
     end
 
@@ -64,22 +52,14 @@ function TensorAutoregression(y::AbstractArray,
 end
 
 """
-    TensorAutoregression(
-        dims,
-        R;
-        dynamic=false,
-        dist=:white_noise
-    ) -> model
+    TensorAutoregression(dims, R; dynamic=false, dist=:white_noise) -> model
 
-Constructs a tensor autoregressive model of dimensions `dims` with
-autoregressive coefficient tensor of rank `R`, potentially dynamic, and tensor
-error distribution `dist`.
+Constructs a tensor autoregressive model of dimensions `dims` with autoregressive
+coefficient tensor of rank `R`, potentially dynamic, and tensor error distribution `dist`.
 """
-function TensorAutoregression(dims::Dims,
-                              R::Integer;
-                              dynamic::Bool = false,
+function TensorAutoregression(dims::Dims, R::Integer; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
-    return TensorAutoregression(zeros(dims), R, dynamic = dynamic, dist = dist)
+    TensorAutoregression(zeros(dims), R, dynamic = dynamic, dist = dist)
 end
 
 """
@@ -89,8 +69,8 @@ Simulate data from the tensor autoregressive model described by `model` and
 return a new instance with the simulated data, using random number generator
 `rng` and apply a burn-in period of `burn`.
 """
-function simulate(model::StaticTensorAutoregression;
-                  burn::Integer = 100, rng::AbstractRNG = Xoshiro())
+function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
+                  rng::AbstractRNG = Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -134,9 +114,8 @@ function simulate(model::StaticTensorAutoregression;
 
     return StaticTensorAutoregression(y_sim, ε_sim, A_sim, fixed(model))
 end
-
-function simulate(model::DynamicTensorAutoregression;
-                  burn::Integer = 100, rng::AbstractRNG = Xoshiro())
+function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
+                  rng::AbstractRNG = Xoshiro())
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
@@ -183,30 +162,20 @@ function simulate(model::DynamicTensorAutoregression;
 end
 
 """
-    fit!(
-        model;
-        init_method=(coef=:data, dist=:data),
-        ϵ=1e-4,
-        max_iter=1000,
-        verbose=false
-    ) -> model
+    fit!(model; init_method=(coef=:data, dist=:data), ϵ=1e-4, max_iter=1000, verbose=false) -> model
 
-Fit the tensor autoregressive model described by `model` to the data with
-tolerance `ϵ` and maximum number of iterations `max_iter`. If `verbose` is true
-a summary of the model fitting is printed. `init_method` indicates which method
-is used for initialization of the parameters.
+Fit the tensor autoregressive model described by `model` to the data with tolerance `ϵ` and
+maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
+is printed. `init_method` indicates which method is used for initialization of the parameters.
 
-Estimation is done using the Expectation-Maximization algorithm for
-obtaining the maximum likelihood estimates of the dynamic model and the
-alternating least squares (ALS) algorithm for obtaining the least squares and
-maximum likelihood estimates of the static model, for respectively white noise
-and tensor normal errors.
+Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
+likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
+for obtaining the least squares and maximum likelihood estimates of the static model, for
+respectively white noise and tensor normal errors.
 """
 function fit!(model::AbstractTensorAutoregression;
               init_method::NamedTuple = (coef = :data, dist = :data),
-              ϵ::AbstractFloat = 1e-4,
-              max_iter::Integer = 1000,
-              verbose::Bool = false)
+              ϵ::AbstractFloat = 1e-4, max_iter::Integer = 1000, verbose::Bool = false)
     keys(init_method) ⊇ (:coef, :dist) ||
         error("init_method must be a NamedTuple with keys :coef and :dist.")
 
@@ -285,7 +254,6 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
 
     return forecasts
 end
-
 function forecast(model::DynamicTensorAutoregression, periods::Integer)
     dims = size(data(model))
     n = ndims(data(model)) - 1
@@ -312,16 +280,12 @@ end
 """
     irf(model, periods; α=.05, orth=false) -> irfs
 
-Compute impulse response functions `periods` periods ahead and corresponding
-`α`% upper and lower confidence bounds using fitted tensor autoregressive model
-`model`. Upper and lower confidence bounds are computed using Monte Carlo
-simulation.
-If `orth` is true, the orthogonalized impulse response functions are
-computed.
+Compute impulse response functions `periods` periods ahead and corresponding `α`% upper and
+lower confidence bounds using fitted tensor autoregressive model `model`. Upper and lower
+confidence bounds are computed using Monte Carlo simulation. If `orth` is true, the
+orthogonalized impulse response functions are computed.
 """
-function irf(model::AbstractTensorAutoregression,
-             periods::Integer;
-             α::Real = 0.05,
+function irf(model::AbstractTensorAutoregression, periods::Integer; α::Real = 0.05,
              orth::Bool = false)
     if model isa StaticTensorAutoregression
         irf_type = StaticIRF

@@ -1,9 +1,9 @@
 #=
 solver.jl
 
-    Provides alternating least squares (ALS) and expectation-maximization (EM)
-    optimization routines for fitting a tensor autoregressive model with Kruskal
-    coefficient tensor and tensor error distribution.
+    Provides alternating least squares (ALS) and expectation-maximization (EM) optimization
+    routines for fitting a tensor autoregressive model with Kruskal coefficient tensor and
+    tensor error distribution.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -13,9 +13,8 @@ solver.jl
 """
     update!(model)
 
-Update parameters of tensor autoregression `model` using an alternating least
-squares (ALS) solve. Wrapper to invoke multiple dispatch over static and dynamic
-tensor autoregressions.
+Update parameters of tensor autoregression `model` using an alternating least squares (ALS)
+solve. Wrapper to invoke multiple dispatch over static and dynamic tensor autoregressions.
 """
 update!(model::StaticTensorAutoregression) = als!(coef(model), dist(model), data(model))
 function update!(model::DynamicTensorAutoregression)
@@ -34,9 +33,9 @@ end
 """
     als!(A, ε, y[, V])
 
-Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the
-tensor autoregressive model based on data `y` and smoothed loading variance `V`
-when `A` is dynamic using an alternating least squares (ALS) solve.
+Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the tensor
+autoregressive model based on data `y` and smoothed loading variance `V` when `A` is dynamic
+using an alternating least squares (ALS) solve.
 """
 function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     dims = size(y)
@@ -74,14 +73,10 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
             M = Zkr * Xkr'
 
             # update factor k
-            update_factor!(factors(A)[k][:, r],
-                           factors(A)[k + n][:, r],
-                           G \ M',
+            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M',
                            inv(loadings(A)[r]))
             # update factor k+n
-            update_factor!(factors(A)[k + n][:, r],
-                           factors(A)[k][:, r],
-                           M,
+            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
                            inv(loadings(A)[r] *
                                dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
 
@@ -105,7 +100,6 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
 
     return nothing
 end
-
 function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     dims = size(y)
     n = ndims(y) - 1
@@ -153,15 +147,11 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
             M = Zkr * Xkr'
 
             # update factor k
-            update_factor!(factors(A)[k][:, r],
-                           factors(A)[k + n][:, r],
-                           G \ M' * Ω[k],
+            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M' * Ω[k],
                            inv(loadings(A)[r] *
                                dot(factors(A)[k + n][:, r], Ω[k], factors(A)[k + n][:, r])))
             # update factor k+n
-            update_factor!(factors(A)[k + n][:, r],
-                           factors(A)[k][:, r],
-                           M,
+            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
                            inv(loadings(A)[r] *
                                dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
 
@@ -197,11 +187,7 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 
     return nothing
 end
-
-function als!(A::DynamicKruskal,
-              ε::TensorNormal,
-              y::AbstractArray,
-              V::AbstractVector)
+function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::AbstractVector)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -274,14 +260,10 @@ function als!(A::DynamicKruskal,
             M = Zkr * Xkr'
 
             # update factor k
-            update_factor!(factors(A)[k][:, r],
-                           factors(A)[k + n][:, r],
-                           G \ M' * Ω[k],
+            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M' * Ω[k],
                            inv(dot(factors(A)[k + n][:, r], Ω[k], factors(A)[k + n][:, r])))
             # update factor k+n
-            update_factor!(factors(A)[k + n][:, r],
-                           factors(A)[k][:, r],
-                           M,
+            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
                            inv(dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
 
             # update outer product of Kruskal factors
@@ -338,12 +320,10 @@ end
 """
     update_transition!(A, V, Γ)
 
-Update transition dynamics of dynamic Kruskal coefficient tensor `A` using
-smoothed loadings variance `V`, and autocovariance `Γ`.
+Update transition dynamics of dynamic Kruskal coefficient tensor `A` using smoothed loadings
+variance `V`, and autocovariance `Γ`.
 """
-function update_transition!(A::DynamicKruskal,
-                            V::AbstractVector,
-                            Γ::AbstractVector)
+function update_transition!(A::DynamicKruskal, V::AbstractVector, Γ::AbstractVector)
     T = length(V)
 
     # objective closures
