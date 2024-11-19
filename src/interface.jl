@@ -177,7 +177,8 @@ respectively white noise and tensor normal errors.
 """
 function fit!(model::AbstractTensorAutoregression;
               init_method::NamedTuple = (coef = :data, dist = :data),
-              ϵ::AbstractFloat = 1e-4, max_iter::Integer = 1000, verbose::Bool = false)
+              tolerance::AbstractFloat = 1e-4, max_iter::Integer = 1000,
+              verbose::Bool = false)
     keys(init_method) ⊇ (:coef, :dist) ||
         error("init_method must be a NamedTuple with keys :coef and :dist.")
 
@@ -223,7 +224,7 @@ function fit!(model::AbstractTensorAutoregression;
 
         # convergence
         δ = 2 * abs(obj - obj_prev) / (abs(obj) + abs(obj_prev))
-        converged = δ < ϵ
+        converged = δ < tolerance
 
         # update iteration counter
         iter += 1
@@ -294,14 +295,14 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
 end
 
 """
-    irf(model, periods; α=.05, orth=false) -> irfs
+    irf(model, periods; alpha=.05, orth=false) -> irfs
 
-Compute impulse response functions `periods` periods ahead and corresponding `α`% upper and
-lower confidence bounds using fitted tensor autoregressive model `model`. Upper and lower
-confidence bounds are computed using Monte Carlo simulation. If `orth` is true, the
+Compute impulse response functions `periods` periods ahead and corresponding `alpha`% upper
+and lower confidence bounds using fitted tensor autoregressive model `model`. Upper and
+lower confidence bounds are computed using Monte Carlo simulation. If `orth` is true, the
 orthogonalized impulse response functions are computed.
 """
-function irf(model::AbstractTensorAutoregression, periods::Integer; α::Real = 0.05,
+function irf(model::AbstractTensorAutoregression, periods::Integer; alpha::Real = 0.05,
              orth::Bool = false)
     if model isa StaticTensorAutoregression
         irf_type = StaticIRF
@@ -316,7 +317,7 @@ function irf(model::AbstractTensorAutoregression, periods::Integer; α::Real = 0
     orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
 
     # confidence bounds
-    (lower, upper) = confidence_bounds(model, periods, α, orth)
+    (lower, upper) = confidence_bounds(model, periods, alpha, orth)
 
     return irf_type(Ψ, lower, upper, orth)
 end

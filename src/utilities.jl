@@ -155,16 +155,16 @@ function particle_sampler(model::DynamicTensorAutoregression, periods::Integer;
     (a, P, v, _, K) = filter(model)
     # predict
     if time == last(size(coef(model)))
-        â = T * a[end] + K[end] * v[end] + c
-        P̂ = T * P[end] * (T - K[end] * Z_star[end])' + Q
+        a_hat = T * a[end] + K[end] * v[end] + c
+        P_hat = T * P[end] * (T - K[end] * Z_star[end])' + Q
     elseif time < last(size(coef(model)))
-        â = a[time + 1]
-        P̂ = P[time + 1]
+        a_hat = a[time + 1]
+        P_hat = P[time + 1]
     end
 
     # particle sampling
-    particles = similar(â, length(â), samples, periods)
-    particles[:, :, 1] = rand(rng, MvNormal(â, P̂), samples)
+    particles = similar(a_hat, length(a_hat), samples, periods)
+    particles[:, :, 1] = rand(rng, MvNormal(a_hat, P_hat), samples)
     for h in 2:periods, s in 1:samples
         particles[:, s, h] = rand(rng, MvNormal(c + T * particles[:, s, h - 1], Q))
     end
