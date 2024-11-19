@@ -82,6 +82,9 @@ Base.size(A::AbstractKruskal) = tuple(size.(factors(A), 1)...)
 Base.size(A::DynamicKruskal) = tuple(size.(factors(A), 1)..., size(loadings(A), 2))
 full(A::AbstractKruskal) = tucker(loadings(A) .* I(length(factors(A)), rank(A)), factors(A))
 full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
+function outer(A::AbstractKruskal)
+    [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+end
 intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ

@@ -1,9 +1,9 @@
 #=
 solver.jl
 
-    Provides alternating least squares (ALS) and expectation-maximization (EM) 
-    optimization routines for fitting a tensor autoregressive model with Kruskal 
-    coefficient tensor and tensor error distribution. 
+    Provides alternating least squares (ALS) and expectation-maximization (EM)
+    optimization routines for fitting a tensor autoregressive model with Kruskal
+    coefficient tensor and tensor error distribution.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -43,7 +43,7 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     n = ndims(y) - 1
 
     # outer product of Kruskal factors
-    U = [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+    U = outer(A)
 
     # lag and lead variables
     y_lead = selectdim(y, n + 1, 2:last(dims))
@@ -118,7 +118,7 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+    U = outer(A)
 
     # scaling
     S = [[Cinv[i] * U[r][i] for i in 1:n] for r in 1:rank(A)]
@@ -213,7 +213,7 @@ function als!(A::DynamicKruskal,
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+    U = outer(A)
 
     # lag and lead variables
     y_lead = selectdim(y, n + 1, 2:last(dims))

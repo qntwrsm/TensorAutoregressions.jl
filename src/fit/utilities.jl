@@ -1,8 +1,8 @@
 #=
 utilities.jl
 
-    Provides a collection of utility tools for fitting tensor autoregressive 
-    models, such as initialization, convergence checks, and log-likelihood 
+    Provides a collection of utility tools for fitting tensor autoregressive
+    models, such as initialization, convergence checks, and log-likelihood
     evaluation.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
@@ -123,8 +123,7 @@ function update_resid!(model::StaticTensorAutoregression)
     y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
-         for r in 1:rank(model)]
+    U = outer(coef(model))
 
     # update residuals
     resid(model) .= y_lead
@@ -144,8 +143,7 @@ function update_resid!(model::DynamicTensorAutoregression)
     y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
-         for r in 1:rank(model)]
+    U = outer(coef(model))
 
     # regressor tensors
     X = [tucker(y_lag, U[r]) for r in 1:rank(model)]
@@ -166,7 +164,7 @@ end
 
 Initialize the tensor autoregressive model `model` by `method`.
 
-When `method` is set to `:data`: 
+When `method` is set to `:data`:
 - Initialization of the Kruskal coefficient tensor is based on ridge regression of
 the vectorized model combined with a CP decomposition. In case of a dynamic
 Kruskal tensor the dynamic paramaters are obtained from the factor model
@@ -209,9 +207,9 @@ end
 
 Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`.
 
-When `method` is set to `:data`: 
+When `method` is set to `:data`:
 Initialization of the Kruskal coefficient tensor is based on ridge regression of
-the vectorized model combined with a CP decomposition. 
+the vectorized model combined with a CP decomposition.
 
 When `method` is set to `:random`:
 Initialization of the Kruskal coefficient tensor is based on a randomly sampled
@@ -272,15 +270,15 @@ function init!(A::AbstractKruskal, y::AbstractArray, method::Symbol)
             loadings(A) .= rand(rank(A))
         end
     else
+        # outer product of Kruskal factors
+        U = outer(A)
         xt = similar(x, size(x, 1), rank(A))
         for t in 1:(last(dims) - 1)
             # select time series
             yt = selectdim(y, n + 1, t)
             # regressors
             for r in 1:rank(A)
-                # outer product of Kruskal factors
-                U = [factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n]
-                xt[:, r] = vec(tucker(yt, U))
+                xt[:, r] = vec(tucker(yt, U[r]))
             end
             loadings(A)[:, t] = xt \ z[:, t]
         end
@@ -325,15 +323,16 @@ function init!(ε::AbstractTensorErrorDistribution,
     y_lead = selectdim(y, n + 1, 2:last(dims))
     y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
 
+    # outer product of Kruskal factors
+    U = outer(A)
+
     # error distribution
     resid(ε) .= y_lead
     for r in 1:rank(A)
-        # outer product of Kruskal factors
-        U = [factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n]
         if A isa StaticKruskal
-            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U)
+            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U[r])
         else
-            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U)
+            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U[r])
         end
     end
     # covariance

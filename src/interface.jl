@@ -1,8 +1,8 @@
 #=
 interface.jl
 
-    Provides a collection of interface tools for working with tensor autoregressive 
-    models, such as estimation, forecasting, and impulse response analysis. 
+    Provides a collection of interface tools for working with tensor autoregressive
+    models, such as estimation, forecasting, and impulse response analysis.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -11,9 +11,9 @@ interface.jl
 
 """
     TensorAutoregression(
-        y, 
-        R; 
-        dynamic=false, 
+        y,
+        R;
+        dynamic=false,
         dist=:white_noise
     ) -> model
 
@@ -65,9 +65,9 @@ end
 
 """
     TensorAutoregression(
-        dims, 
-        R; 
-        dynamic=false, 
+        dims,
+        R;
+        dynamic=false,
         dist=:white_noise
     ) -> model
 
@@ -102,8 +102,7 @@ function simulate(model::StaticTensorAutoregression;
     (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
 
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i + n][:, r] * factors(A_sim)[i][:, r]' for i in 1:n]
-         for r in 1:rank(A_sim)]
+    U = outer(coef(model))
 
     # burn-in
     y_burn = similar(data(model), dims[1:n]..., burn + 1)
@@ -148,8 +147,7 @@ function simulate(model::DynamicTensorAutoregression;
     (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
 
     # outer product of Kruskal factors
-    U = [[factors(A_sim)[i + n][:, r] * factors(A_sim)[i][:, r]' for i in 1:n]
-         for r in 1:rank(A_sim)]
+    U = outer(coef(model))
 
     # burn-in
     y_burn = similar(data(model), dims[1:n]..., burn + 1)
@@ -186,10 +184,10 @@ end
 
 """
     fit!(
-        model;  
-        init_method=(coef=:data, dist=:data), 
-        ϵ=1e-4, 
-        max_iter=1000, 
+        model;
+        init_method=(coef=:data, dist=:data),
+        ϵ=1e-4,
+        max_iter=1000,
         verbose=false
     ) -> model
 
@@ -274,8 +272,7 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
     n = ndims(data(model)) - 1
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
-         for r in 1:rank(model)]
+    U = outer(coef(model))
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)
@@ -297,8 +294,7 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer)
     particles = particle_sampler(model, periods)
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
-         for r in 1:rank(model)]
+    U = outer(coef(model))
 
     # forecast data using tensor autoregression
     forecasts = similar(data(model), dims[1:n]..., periods)

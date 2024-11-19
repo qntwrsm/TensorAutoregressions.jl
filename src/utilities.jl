@@ -1,10 +1,10 @@
 #=
 utilities.jl
 
-    Provides a collection of utility tools for working with tensor 
-    autoregressive models, such as moving average representation, orthogonalize 
-    responses, state space form for the dynamic model, as well as filter and 
-    smoother routines, simulation, and particle sampler. 
+    Provides a collection of utility tools for working with tensor
+    autoregressive models, such as moving average representation, orthogonalize
+    responses, state space form for the dynamic model, as well as filter and
+    smoother routines, simulation, and particle sampler.
 
 @author: Quint Wiersma <q.wiersma@vu.nl>
 
@@ -13,12 +13,12 @@ utilities.jl
 
 """
     confidence_bounds(
-        model, 
-        periods, 
-        α, 
-        orth, 
-        samples=100, 
-        burn=100, 
+        model,
+        periods,
+        α,
+        orth,
+        samples=100,
+        burn=100,
         rng=Xoshiro()
     ) -> (lower, upper)
 
@@ -152,10 +152,10 @@ end
 
 """
     particle_sampler(
-        model, 
-        periods; 
-        time=last(size(coef(model))), 
-        samples=1000, 
+        model,
+        periods;
+        time=last(size(coef(model))),
+        samples=1000,
         rng=Xoshiro()
     ) -> particles
 
@@ -196,7 +196,7 @@ end
 """
     collapse(model) -> (A_low, Z_basis)
 
-Low-dimensional collapsing matrices for the dynamic tensor autoregressive model 
+Low-dimensional collapsing matrices for the dynamic tensor autoregressive model
 `model` following the approach of Jungbacker and Koopman (2015).
 """
 function collapse(model::DynamicTensorAutoregression)
@@ -207,8 +207,7 @@ function collapse(model::DynamicTensorAutoregression)
     Ω = inv.(cov(model))
 
     # outer product of Kruskal factors
-    U = [[factors(model)[i + n][:, r] * factors(model)[i][:, r]' for i in 1:n]
-         for r in 1:rank(model)]
+    U = outer(coef(model))
 
     # scaling
     S = [[Ω[i] * U[r][i] for i in 1:n] for r in 1:rank(model)]
@@ -231,11 +230,16 @@ end
 """
     state_space(model) -> (y_low, Z_low, H_low, a1, P1)
 
-State space form of the collapsed dynamic tensor autoregressive model `model` 
+State space form of the collapsed dynamic tensor autoregressive model `model`
 following the approach of Jungbacker and Koopman (2015).
 """
 function state_space(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
     Ty = eltype(data(model))
+
+    # outer product of Kruskal factors
+    U = outer(coef(model))
 
     # high-dimensional system matrices
     Z = [stack([vec(tucker(yt, U[r])) for r in 1:rank(model)])
@@ -399,7 +403,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
                           cov(ε))
     # burn-in
     for εt in eachslice(resid(ε_burn), dims = n + 1)
-        # sample independent random normals and use tucker product with Cholesky 
+        # sample independent random normals and use tucker product with Cholesky
         # decompositions
         εt .= tucker(randn(rng, dims[1:n]...), C)
     end
@@ -408,7 +412,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
     copyto!(ε_sim, ε)
     # simulate
     for εt in eachslice(resid(ε_sim), dims = n + 1)
-        # sample independent random normals and use tucker product with Cholesky 
+        # sample independent random normals and use tucker product with Cholesky
         # decompositions
         εt .= tucker(randn(rng, dims[1:n]...), C)
     end
