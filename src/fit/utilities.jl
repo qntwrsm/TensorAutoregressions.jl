@@ -23,21 +23,11 @@ function objective(model::StaticTensorAutoregression)
     end
 end
 
-"""
-    rss(model) -> rss
-
-Evaluate residual sum of squares of the tensor autoregressive model `model`.
-"""
 function rss(model::AbstractTensorAutoregression)
     update_resid!(model)
     return norm(resid(model))^2
 end
 
-"""
-    loglikelihood(model) -> ll
-
-Evaluate log-likelihood of the tensor autoregressive model `model`.
-"""
 function loglikelihood(model::StaticTensorAutoregression)
     dist(model) isa WhiteNoise &&
         error("Log-likelihood not available for white noise error distribution.")

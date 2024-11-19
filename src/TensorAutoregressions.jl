@@ -39,7 +39,7 @@ export
 
 ## fit
       fit!,
-      loglikelihood,
+      rss, loglikelihood,
       dof, nobs, aic, aicc, bic,
 
 ## forecast
