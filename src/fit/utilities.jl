@@ -17,18 +17,18 @@ Wrapper for objective function evaluation for tensor autoregressive model `model
 objective(model::AbstractTensorAutoregression) = loglikelihood(model)
 function objective(model::StaticTensorAutoregression)
     if dist(model) isa WhiteNoise
-        return sse(model)
+        return rss(model)
     else
         return loglikelihood(model)
     end
 end
 
 """
-    sse(model) -> sse
+    rss(model) -> rss
 
-Evaluate sum of squared errors of the tensor autoregressive model `model`.
+Evaluate residual sum of squares of the tensor autoregressive model `model`.
 """
-function sse(model::AbstractTensorAutoregression)
+function rss(model::AbstractTensorAutoregression)
     update_resid!(model)
     return norm(resid(model))^2
 end

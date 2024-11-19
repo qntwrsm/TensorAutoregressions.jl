@@ -19,7 +19,7 @@ using StatsAPI: aic, aicc, bic
 
 import LinearAlgebra: rank
 import Statistics: cov
-import StatsAPI: fit!, loglikelihood, dof, nobs
+import StatsAPI: fit!, rss, loglikelihood, dof, nobs
 
 # Makie backend and theme
 CairoMakie.activate!()
