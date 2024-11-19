@@ -112,7 +112,7 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
         end
     end
 
-    return StaticTensorAutoregression(y_sim, ε_sim, A_sim, fixed(model))
+    return StaticTensorAutoregression(y_sim, ε_sim, A_sim)
 end
 function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
@@ -158,7 +158,7 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
         end
     end
 
-    return DynamicTensorAutoregression(y_sim, ε_sim, A_sim, fixed(model))
+    return DynamicTensorAutoregression(y_sim, ε_sim, A_sim)
 end
 
 """
