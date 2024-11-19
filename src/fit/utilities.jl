@@ -23,10 +23,7 @@ function objective(model::StaticTensorAutoregression)
     end
 end
 
-function rss(model::AbstractTensorAutoregression)
-    update_resid!(model)
-    return norm(resid(model))^2
-end
+rss(model::AbstractTensorAutoregression) = norm(residuals(model))^2
 
 function loglikelihood(model::StaticTensorAutoregression)
     dist(model) isa WhiteNoise &&
@@ -49,8 +46,7 @@ function loglikelihood(model::StaticTensorAutoregression)
         ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
     end
     # fit component
-    update_resid!(model)
-    ll -= 0.5 * norm(tucker(resid(model), Cinv))^2
+    ll -= 0.5 * norm(tucker(residuals(model), Cinv))^2
 
     return ll
 end
@@ -97,11 +93,11 @@ function loglikelihood(model::DynamicTensorAutoregression)
 end
 
 """
-    update_resid!(model)
+    residuals(model) -> ε
 
-In-place update of the residuals of the tensor autoregressive model `model`.
+Return the residuals of the tensor autoregressive model `model`.
 """
-function update_resid!(model::StaticTensorAutoregression)
+function residuals(model::StaticTensorAutoregression)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -113,14 +109,14 @@ function update_resid!(model::StaticTensorAutoregression)
     U = outer(coef(model))
 
     # update residuals
-    resid(model) .= y_lead
+    ε = copy(y_lead)
     for r in 1:rank(model)
-        resid(model) .-= loadings(model)[r] .* tucker(y_lag, U[r])
+        ε .-= loadings(model)[r] .* tucker(y_lag, U[r])
     end
 
-    return nothing
+    return ε
 end
-function update_resid!(model::DynamicTensorAutoregression)
+function residuals(model::DynamicTensorAutoregression)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -135,14 +131,14 @@ function update_resid!(model::DynamicTensorAutoregression)
     X = [tucker(y_lag, U[r]) for r in 1:rank(model)]
 
     # update residuals
-    resid(model) .= y_lead
-    for (t, εt) in pairs(eachslice(resid(model), dims = n + 1))
+    ε = copy(y_lead)
+    for (t, εt) in pairs(eachslice(ε, dims = n + 1))
         for r in 1:rank(model)
             εt .-= loadings(model)[r, t] .* selectdim(X[r], n + 1, t)
         end
     end
 
-    return nothing
+    return ε
 end
 
 """
@@ -294,26 +290,12 @@ function init!(ε::AbstractTensorErrorDistribution, y::AbstractArray, A::Abstrac
     dims = size(y)
     n = ndims(y) - 1
 
-    # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
-
-    # outer product of Kruskal factors
-    U = outer(A)
-
     # error distribution
-    resid(ε) .= y_lead
-    for r in 1:rank(A)
-        if A isa StaticKruskal
-            resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U[r])
-        else
-            resid(ε) .-= reshape(loadings(A), ones(Int, n)..., :) .* tucker(y_lag, U[r])
-        end
-    end
+    resid = residuals(model)
     # covariance
     if ε isa WhiteNoise
         if method == :data
-            cov(ε).data .= cov(reshape(resid(ε), :, 1:(last(dims) - 1)), dims = 2)
+            cov(ε).data .= cov(reshape(resid, :, 1:(last(dims) - 1)), dims = 2)
         elseif method == :random
             p = prod(dims[1:n])
             cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
@@ -322,7 +304,7 @@ function init!(ε::AbstractTensorErrorDistribution, y::AbstractArray, A::Abstrac
         scale = one(eltype(resid(ε)))
         for k in 1:n
             if method == :data
-                cov(ε)[k].data .= cov(matricize(resid(ε), k), dims = 2)
+                cov(ε)[k].data .= cov(matricize(resid, k), dims = 2)
             elseif method == :random
                 cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
             end

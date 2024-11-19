@@ -348,8 +348,7 @@ function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
         end
     end
 
-    A_sim = similar(A)
-    copyto!(A_sim, A)
+    A_sim = DynamicKruskal((copy(getproperty(A, p)) for p in propertynames(A))...)
     dist = MvNormal(cov(A_sim))
     # simulate
     for (t, λt) in pairs(eachslice(loadings(A_sim), dims = 2))
@@ -382,8 +381,7 @@ function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
         εt .= tucker(randn(rng, dims[1:n]...), C)
     end
 
-    ε_sim = similar(ε)
-    copyto!(ε_sim, ε)
+    ε_sim = TensorNormal(copy(cov(ε)))
     # simulate
     for εt in eachslice(resid(ε_sim), dims = n + 1)
         # sample independent random normals and use tucker product with Cholesky

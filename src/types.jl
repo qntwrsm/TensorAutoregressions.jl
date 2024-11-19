@@ -81,30 +81,6 @@ dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
 dof(A::StaticKruskal) = rank(A) + sum(length, factors(A))
 dof(A::DynamicKruskal) = 3 * rank(A) + sum(length, factors(A))
-function Base.similar(A::StaticKruskal)
-    StaticKruskal(similar(loadings(A)), similar.(factors(A)), rank(A))
-end
-function Base.similar(A::DynamicKruskal)
-    DynamicKruskal(similar(loadings(A)), similar(intercept(A)), similar(dynamics(A)),
-                   similar(cov(A)), similar.(factors(A)), rank(A))
-end
-function Base.copyto!(dest::StaticKruskal, src::StaticKruskal)
-    copyto!(loadings(dest), loadings(src))
-    copyto!.(factors(dest), factors(src))
-    rank(dest) = rank(src)
-
-    return dest
-end
-function Base.copyto!(dest::DynamicKruskal, src::DynamicKruskal)
-    copyto!(loadings(dest), loadings(src))
-    copyto!(intercept(dest), intercept(src))
-    copyto!(dynamics(dest), dynamics(src))
-    copyto!(cov(dest), cov(src))
-    copyto!.(factors(dest), factors(src))
-    rank(dest) = rank(src)
-
-    return dest
-end
 
 # Tensor error distributions
 """
@@ -117,17 +93,10 @@ abstract type AbstractTensorErrorDistribution end
 """
     WhiteNoise <: AbstractTensorErrorDistribution
 
-White noise model of tensor errors `ε` with covariance matrix `Σ` of ``vec(ε)``.
+White noise model of tensor errors with covariance matrix `Σ` of ``vec(ε)``.
 """
-struct WhiteNoise{Tε <: AbstractArray, TΣ <: Symmetric} <: AbstractTensorErrorDistribution
-    ε::Tε
+struct WhiteNoise{TΣ <: Symmetric} <: AbstractTensorErrorDistribution
     Σ::Symmetric
-    function WhiteNoise(ε::AbstractArray, Σ::Symmetric)
-        prod(size(ε)[1:(end - 1)]) == size(Σ, 1) ||
-            throw(DimensionMismatch("number of elements in vec(εₜ) must equal rank of Σ."))
-
-        return new{typeof(ε), typeof(Σ)}(ε, Σ)
-    end
 end
 
 """
@@ -136,23 +105,17 @@ end
 Tensor normal model of tensor errors `ε` with separable covariance matrix `Σ` along each
 mode of the tensor.
 """
-struct TensorNormal{Tε <: AbstractArray, TΣ <: AbstractVector} <:
-       AbstractTensorErrorDistribution
-    ε::Tε
+struct TensorNormal{TΣ <: AbstractVector} <: AbstractTensorErrorDistribution
     Σ::TΣ
-    function TensorNormal(ε::AbstractArray, Σ::AbstractVector)
-        length(Σ) == ndims(ε) - 1 ||
-            error("number of matrices in Σ must equal number of modes of εₜ.")
-        all(size.(Σ, 1) .== size(ε)[1:(end - 1)]) ||
-            throw(DimensionMismatch("dimensions of matrices in Σ must equal dimensions of modes of εₜ."))
+    function TensorNormal(Σ::AbstractVector)
         all(issymmetric, Σ) || error("all matrices in Σ must be symmetric.")
+        Σsym = Symmetric.(Σ)
 
-        return new{typeof(ε), typeof(Σ)}(ε, Symmetric.(Σ))
+        return new{typeof(Σsym)}(Σsym)
     end
 end
 
 # methods
-resid(ε::AbstractTensorErrorDistribution) = ε.ε
 cov(ε::AbstractTensorErrorDistribution; full::Bool = false) = ε.Σ
 function cov(ε::TensorNormal; full::Bool = false)
     if full
@@ -160,26 +123,13 @@ function cov(ε::TensorNormal; full::Bool = false)
         for Σi in reverse(cov(ε)[1:(end - 1)])
             Σ = kron(Σ, Σi)
         end
+
         return Σ
     else
         return ε.Σ
     end
 end
 dof(ε::AbstractTensorErrorDistribution) = (sum(length, cov(ε)) + sum(size.(cov(ε), 1))) / 2
-Base.similar(ε::WhiteNoise) = WhiteNoise(similar(resid(ε)), similar(cov(ε)))
-Base.similar(ε::TensorNormal) = TensorNormal(similar(resid(ε)), similar.(cov(ε)))
-function Base.copyto!(dest::WhiteNoise, src::WhiteNoise)
-    copyto!(resid(dest), resid(src))
-    copyto!(cov(dest), cov(src))
-
-    return dest
-end
-function Base.copyto!(dest::TensorNormal, src::TensorNormal)
-    copyto!(resid(dest), resid(src))
-    copyto!.(cov(dest), cov(src))
-
-    return dest
-end
 
 # Tensor autoreggresive model
 """
@@ -206,8 +156,13 @@ struct StaticTensorAutoregression{Ty <: AbstractArray,
                                         A::StaticKruskal)
         dims = size(y)
         n = ndims(y) - 1
-        size(y)[1:n] == size(resid(ε))[1:n] ||
-            throw(DimensionMismatch("dimensions of y and residuals must be equal."))
+        if ε isa WhiteNoise
+            prod(dims[1:n]) == size(cov(ε), 1) ||
+                throw(DimensionMismatch("dimensions of y and Σ must be equal."))
+        elseif ε isa TensorNormal
+            all(dims[1:n] .== size.(cov(ε), 1)) ||
+                throw(DimensionMismatch("dimensions of y and Σ must be equal."))
+        end
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
             throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
 
@@ -232,12 +187,14 @@ struct DynamicTensorAutoregression{Ty <: AbstractArray,
                                          A::DynamicKruskal)
         dims = size(y)
         n = ndims(y) - 1
-        size(y)[1:n] == size(resid(ε))[1:n] ||
-            throw(DimensionMismatch("dimensions of y and residuals must be equal."))
+        if ε isa WhiteNoise
+            throw(ArgumentError("dynamic model with white noise error not supported."))
+        elseif ε isa TensorNormal
+            all(dims[1:n] .== size.(cov(ε), 1)) ||
+                throw(DimensionMismatch("dimensions of y and Σ must be equal."))
+        end
         all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
             throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
-        ε isa WhiteNoise &&
-            throw(ArgumentError("dynamic model with white noise error not supported."))
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
@@ -247,29 +204,12 @@ end
 data(model::AbstractTensorAutoregression) = model.y
 coef(model::AbstractTensorAutoregression) = model.A
 dist(model::AbstractTensorAutoregression) = model.ε
-resid(model::AbstractTensorAutoregression) = resid(dist(model))
 cov(model::AbstractTensorAutoregression; full::Bool = false) = cov(dist(model), full = full)
 factors(model::AbstractTensorAutoregression) = factors(coef(model))
 loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
 rank(model::AbstractTensorAutoregression) = rank(coef(model))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = dof(coef(model)) + dof(dist(model))
-function Base.similar(model::StaticTensorAutoregression)
-    StaticTensorAutoregression(similar(data(model)), similar(dist(model)),
-                               similar(coef(model)))
-end
-function Base.similar(model::DynamicTensorAutoregression)
-    DynamicTensorAutoregression(similar(data(model)), similar(dist(model)),
-                                similar(coef(model)))
-end
-function Base.copyto!(dest::AbstractTensorAutoregression, src::AbstractTensorAutoregression)
-    copyto!(data(dest), data(src))
-    copyto!(dist(dest), dist(src))
-    copyto!(coef(dest), coef(src))
-
-    return dest
-end
-Base.copy(model::AbstractTensorAutoregression) = copyto!(similar(model), model)
 
 # Impulse response functions
 """

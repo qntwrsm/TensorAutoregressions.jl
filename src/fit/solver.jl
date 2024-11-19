@@ -49,15 +49,14 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
     y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
 
     # initialize residuals
-    resid(ε) .= y_lead
+    resid = copy(y_lead)
 
     for r in 1:rank(A)
         s = setdiff(1:rank(A), r)
         # dependent variable tensor
         Zr = copy(y_lead)
         for i in s
-            Xi = tucker(y_lag, U[i])
-            Zr .-= loadings(A)[i] .* Xi
+            Zr .-= loadings(A)[i] .* tucker(y_lag, U[r][i])
         end
         for k in 1:n
             m = setdiff(1:n, k)
@@ -91,11 +90,11 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
         loadings(A)[r] = dot(Zr, Xr) / norm(Xr)^2
 
         # update residuals
-        resid(ε) .-= loadings(A)[r] .* Xr
+        resid .-= loadings(A)[r] .* Xr
     end
 
     # update covariance
-    E = matricize(resid(ε), 1:n)
+    E = matricize(resid, 1:n)
     mul!(cov(ε).data, E, E')
 
     return nothing
@@ -105,9 +104,9 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     n = ndims(y) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(cov(ε))
     # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i in 1:n]
+    Cinv = inv.(getproperty.(C, :L))
     # precision matrices Ωᵢ
     Ω = transpose.(Cinv) .* Cinv
 
@@ -120,9 +119,6 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
     # lag and lead variables
     y_lead = selectdim(y, n + 1, 2:last(dims))
     y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
-
-    # initialize residuals
-    resid(ε) .= y_lead
 
     for r in 1:rank(A)
         s = setdiff(1:rank(A), r)
@@ -165,7 +161,7 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
             k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
 
             # update Cholesky decomposition
-            Cinv[k] = inv(cholesky(Hermitian(cov(ε)[k])).L)
+            Cinv[k] = inv(cholesky(cov(ε)[k]).L)
 
             # update precision matrix
             Ω[k] = transpose(Cinv)[k] .* Cinv[k]
@@ -180,9 +176,6 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 
         # update loading
         loadings(A)[r] = dot(Zr_scaled, Xr) / norm(Xr)^2
-
-        # update residuals
-        resid(ε) .-= loadings(A)[r] .* tucker(y_lag, U[r])
     end
 
     return nothing
@@ -192,9 +185,9 @@ function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::Abstract
     n = ndims(y) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(ε)))
+    C = cholesky.(cov(ε))
     # inverse of Cholesky decompositions
-    Cinv = [inv(C[i].L) for i in 1:n]
+    Cinv = inv.(getproperty.(C, :L))
     # precision matrices Ωᵢ
     Ω = transpose.(Cinv) .* Cinv
 
@@ -255,7 +248,6 @@ function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::Abstract
             for (t, Xkrt) in pairs(eachslice(Xkr, dims = n + 1))
                 G .+= scale[r, t] .* Xkrt * Xkrt'
             end
-            G = Xkr * Xkr'
             # moment matrix
             M = Zkr * Xkr'
 
@@ -304,14 +296,6 @@ function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::Abstract
 
         # normalize
         k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
-    end
-
-    # update residuals
-    resid(ε) .= y_lead
-    for (t, εt) in pairs(eachslice(resid(ε), dims = n + 1))
-        for r in 1:rank(A)
-            εt .-= loadings(A)[r, t] .* selectdim(X[r], n + 1, t)
-        end
     end
 
     return nothing

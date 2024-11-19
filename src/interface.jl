@@ -39,11 +39,9 @@ function TensorAutoregression(y::AbstractArray, R::Integer; dynamic::Bool = fals
     # instantiate tensor error distribution
     N = prod(dims[1:n])
     if dist == :white_noise
-        ε = WhiteNoise(similar(y, dims[1:n]..., last(dims) - 1),
-                       Symmetric(similar(y, N, N)))
+        ε = WhiteNoise(Symmetric(similar(y, N, N)))
     elseif dist == :tensor_normal
-        ε = TensorNormal(similar(y, dims[1:(end - 1)]..., last(dims) - 1),
-                         [Symmetric(similar(y, dims[i], dims[i])) for i in 1:n])
+        ε = TensorNormal([Symmetric(similar(y, dims[i], dims[i])) for i in 1:n])
     else
         throw(ArgumentError("distribution $dist not supported."))
     end
@@ -75,8 +73,7 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    A_sim = similar(coef(model))
-    copyto!(A_sim, coef(model))
+    A_sim = StaticKruskal((copy(getproperty(coef(model), p)) for p in propertynames(coef(model)))...)
 
     # tensor error distribution
     (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
