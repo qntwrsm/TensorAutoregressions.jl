@@ -12,10 +12,11 @@ interface.jl
 """
     TensorAutoregression(y, R; dynamic=false, dist=:white_noise) -> model
 
-Constructs a tensor autoregressive model for data `y` with autoregressive coefficient tensor
-of rank `R`, potentially dynamic, and tensor error distribution `dist`.
+Constructs a tensor autoregressive model for data `y` with autoregressive coefficient
+tensors of rank `R` for lags 1 until ``P``, potentially dynamic, and tensor error
+distribution `dist`.
 """
-function TensorAutoregression(y::AbstractArray, R::Integer; dynamic::Bool = false,
+function TensorAutoregression(y::AbstractArray, R::AbstractArray; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
     dims = size(y)
     n = ndims(y) - 1
@@ -24,15 +25,17 @@ function TensorAutoregression(y::AbstractArray, R::Integer; dynamic::Bool = fals
     dynamic && dist == :white_noise &&
         throw(ArgumentError("dynamic model with white noise error not supported."))
 
-    # instantiate Kruskal autoregressive tensor
+    # instantiate Kruskal autoregressive tensors
     if dynamic
-        A = DynamicKruskal(similar(y, R, last(dims) - 1), similar(y, R),
-                           Diagonal(similar(y, R)), Diagonal(similar(y, R)),
-                           [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
+        A = [DynamicKruskal(similar(y, Rp, last(dims) - 1), similar(y, Rp),
+                            Diagonal(similar(y, Rp)), Diagonal(similar(y, Rp)),
+                            [similar(y, dims[i - n * ((i - 1) ÷ n)], Rp) for i in 1:(2n)],
+                            Rp) for Rp in R]
         model = DynamicTensorAutoregression
     else
-        A = StaticKruskal(similar(y, R),
-                          [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
+        A = [StaticKruskal(similar(y, Rp),
+                           [similar(y, dims[i - n * ((i - 1) ÷ n)], Rp) for i in 1:(2n)],
+                           Rp) for Rp in R]
         model = StaticTensorAutoregression
     end
 
@@ -53,9 +56,10 @@ end
     TensorAutoregression(dims, R; dynamic=false, dist=:white_noise) -> model
 
 Constructs a tensor autoregressive model of dimensions `dims` with autoregressive
-coefficient tensor of rank `R`, potentially dynamic, and tensor error distribution `dist`.
+coefficient tensors of rank `R` for lags 1 until ``P``, potentially dynamic, and tensor
+error distribution `dist`.
 """
-function TensorAutoregression(dims::Dims, R::Integer; dynamic::Bool = false,
+function TensorAutoregression(dims::Dims, R::AbstractArray; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
     TensorAutoregression(zeros(dims), R, dynamic = dynamic, dist = dist)
 end

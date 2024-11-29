@@ -143,17 +143,17 @@ abstract type AbstractTensorAutoregression <: StatisticalModel end
     StaticTensorAutoregression <: AbstractTensorAutoregression
 
 Tensor autoregressive model with tensor error distribution `ε` and static Kruskal tensor
-representation `A`.
+representations `A`.
 """
 struct StaticTensorAutoregression{Ty <: AbstractArray,
                                   Tε <: AbstractTensorErrorDistribution,
-                                  TA <: StaticKruskal} <: AbstractTensorAutoregression
+                                  TA <: AbstractVector} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     function StaticTensorAutoregression(y::AbstractArray,
                                         ε::AbstractTensorErrorDistribution,
-                                        A::StaticKruskal)
+                                        A::AbstractVector)
         dims = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
@@ -163,8 +163,13 @@ struct StaticTensorAutoregression{Ty <: AbstractArray,
             all(dims[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
-        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
-            throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        for (p, Ap) in enumerate(A)
+            Ap isa StaticKruskal ||
+                throw(ArgumentError("only static Kruskal tensors allowed."))
+            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+                throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
+                                        "must equal number of columns of y."))
+        end
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
@@ -174,17 +179,17 @@ end
     DynamicTensorAutoregression <: AbstractTensorAutoregression
 
 Tensor autoregressive model with tensor error distribution `ε` and dynamic Kruskal tensor
-representation `A`.
+representations `A`.
 """
 struct DynamicTensorAutoregression{Ty <: AbstractArray,
                                    Tε <: AbstractTensorErrorDistribution,
-                                   TA <: DynamicKruskal} <: AbstractTensorAutoregression
+                                   TA <: AbstractVector} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     function DynamicTensorAutoregression(y::AbstractArray,
                                          ε::AbstractTensorErrorDistribution,
-                                         A::DynamicKruskal)
+                                         A::AbstractVector)
         dims = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
@@ -193,8 +198,13 @@ struct DynamicTensorAutoregression{Ty <: AbstractArray,
             all(dims[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
-        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
-            throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        for (p, Ap) in enumerate(A)
+            Ap isa DynamicKruskal ||
+                throw(ArgumentError("only dynamic Kruskal tensors allowed."))
+            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+                throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
+                                        "must equal number of columns of y."))
+        end
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
@@ -205,11 +215,11 @@ data(model::AbstractTensorAutoregression) = model.y
 coef(model::AbstractTensorAutoregression) = model.A
 dist(model::AbstractTensorAutoregression) = model.ε
 cov(model::AbstractTensorAutoregression; full::Bool = false) = cov(dist(model), full = full)
-factors(model::AbstractTensorAutoregression) = factors(coef(model))
-loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
-rank(model::AbstractTensorAutoregression) = rank(coef(model))
+factors(model::AbstractTensorAutoregression) = factors.(coef(model))
+loadings(model::AbstractTensorAutoregression) = loadings.(coef(model))
+rank(model::AbstractTensorAutoregression) = rank.(coef(model))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
-dof(model::AbstractTensorAutoregression) = dof(coef(model)) + dof(dist(model))
+dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
 
 # Impulse response functions
 """
