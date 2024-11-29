@@ -96,7 +96,7 @@ abstract type AbstractTensorErrorDistribution end
 White noise model of tensor errors with covariance matrix `Σ` of ``vec(ε)``.
 """
 struct WhiteNoise{TΣ <: Symmetric} <: AbstractTensorErrorDistribution
-    Σ::Symmetric
+    Σ::TΣ
 end
 
 """
