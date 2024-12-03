@@ -112,7 +112,8 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     end
 
     # Kruskal coefficient
-    A = [StaticKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...) for Ap in coef(model)]
+    A = [StaticKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+         for Ap in coef(model)]
 
     return StaticTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
 end
@@ -123,7 +124,8 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
 
     # Kruskal coefficient
     λ = simulate.(coef(model), last(dims) + burn, rng)
-    A = [DynamicKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...) for Ap in coef(model)]
+    A = [DynamicKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+         for Ap in coef(model)]
     for (p, Ap) in pairs(A)
         loadings(Ap) .= λ[p][:, (burn + lags(model) + 1):(last(dims) + burn)]
     end
@@ -169,10 +171,10 @@ end
     fit!(model; init_method=(coef=:data, dist=:data), tolerance=1e-4, max_iter=1000,
          verbose=false) -> model
 
-Fit the tensor autoregressive model described by `model` to the data with tolerance
-`tolerance` and maximum number of iterations `max_iter`. If `verbose` is true a summary of
-the model fitting is printed. `init_method` indicates which method is used for
-initialization of the parameters.
+Fit the tensor autoregressive model described by `model` to the data with `tolerance` and
+maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
+is printed. `init_method` indicates which method is used for initialization of the
+parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
@@ -261,17 +263,23 @@ model `model`.
 function forecast(model::StaticTensorAutoregression, periods::Integer)
     dims = size(data(model))
     n = ndims(data(model)) - 1
+    Ty = eltype(data(model))
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:n]..., periods)
-    # last observation
-    yT = selectdim(data(model), n + 1, last(dims))
+    forecasts = zeros(Ty, dims[1:n]..., periods)
     # forecast
-    for h in 1:periods, r in 1:rank(model)
-        selectdim(forecasts, n + 1, h) .= loadings(model)[r]^h * tucker(yT, U[r] .^ h)
+    for h in 1:periods, (p, Ap) in pairs(coef(model))
+        if h <= p
+            yp = selectdim(data(model), n + 1, last(dims) + h - p)
+        else
+            yp = selectdim(forecasts, n + 1, h - p)
+        end
+        for r in 1:rank(Ap)
+            selectdim(forecasts, n + 1, h) .+= loadings(Ap)[r] * tucker(yp, U[p][r])
+        end
     end
 
     return forecasts
@@ -279,21 +287,28 @@ end
 function forecast(model::DynamicTensorAutoregression, periods::Integer)
     dims = size(data(model))
     n = ndims(data(model)) - 1
+    Ty = eltype(data(model))
 
     # sample dynamic loadings particles
     particles = particle_sampler(model, periods)
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:n]..., periods)
-    # last observation
-    yT = selectdim(data(model), n + 1, last(dims))
+    forecasts = zeros(Ty, dims[1:n]..., periods)
     # forecast
-    for h in 1:periods, r in 1:rank(model)
-        selectdim(forecasts, n + 1, h) .= mean(prod(particles[r, :, 1:h], dims = 2)) *
-                                          tucker(yT, U[r] .^ h)
+    for h in 1:periods, (p, Ap) in pairs(coef(model))
+        if h <= p
+            yp = selectdim(data(model), n + 1, last(dims) + h - p)
+        else
+            yp = selectdim(forecasts, n + 1, h - p)
+        end
+        for r in 1:rank(Ap)
+            s = sum(rank(model)[1:(p - 1)]) + r
+            selectdim(forecasts, n + 1, h) .+= mean(prod(particles[s, :, 1:h], dims = 2)) *
+                                               tucker(yp, U[p][r])
+        end
     end
 
     return forecasts

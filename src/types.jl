@@ -76,7 +76,8 @@ full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
 function outer(A::AbstractKruskal)
     n = length(factors(A)) ÷ 2
 
-    return [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+    return [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n]
+            for r in 1:rank(A)]
 end
 intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
