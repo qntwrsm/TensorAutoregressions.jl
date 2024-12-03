@@ -20,6 +20,7 @@ function TensorAutoregression(y::AbstractArray, R::AbstractArray; dynamic::Bool 
                               dist::Symbol = :white_noise)
     dims = size(y)
     n = ndims(y) - 1
+    p = length(R)
 
     # check model specification
     dynamic && dist == :white_noise &&
@@ -27,7 +28,7 @@ function TensorAutoregression(y::AbstractArray, R::AbstractArray; dynamic::Bool 
 
     # instantiate Kruskal autoregressive tensors
     if dynamic
-        A = [DynamicKruskal(similar(y, Rp, last(dims) - 1), similar(y, Rp),
+        A = [DynamicKruskal(similar(y, Rp, last(dims) - p), similar(y, Rp),
                             Diagonal(similar(y, Rp)), Diagonal(similar(y, Rp)),
                             [similar(y, dims[i - n * ((i - 1) ÷ n)], Rp) for i in 1:(2n)],
                             Rp) for Rp in R]
@@ -76,44 +77,44 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # Kruskal coefficient
-    A_sim = StaticKruskal((copy(getproperty(coef(model), p)) for p in propertynames(coef(model)))...)
-
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+    ε = simulate(dist(model), last(dims) + burn, rng)
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n + 1, t)
-        if t > 1
+        yt .= selectdim(ε, n + 1, t)
+        if t > lags(model)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_burn, n + 1, t - 1), U[r])
+            for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
+                yt .+= loadings(Ap)[r] .* tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
             end
         end
     end
 
     # simulate data
-    y_sim = similar(data(model))
-    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
-        if t == 1
-            yt .= selectdim(y_burn, n + 1, burn + 1)
+    y = similar(data(model))
+    for (t, yt) in pairs(eachslice(y, dims = n + 1))
+        if t <= lags(model)
+            yt .= selectdim(y_burn, n + 1, burn + t)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
+            yt .= selectdim(ε, n + 1, burn + t)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_sim, n + 1, t - 1), U[r])
+            for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
+                yt .+= loadings(Ap)[r] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
         end
     end
 
-    return StaticTensorAutoregression(y_sim, ε_sim, A_sim)
+    # Kruskal coefficient
+    A = [StaticKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...) for Ap in coef(model)]
+
+    return StaticTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
 end
 function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
@@ -121,45 +122,47 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    (A_sim, A_burn) = simulate(coef(model), burn, rng)
+    λ = simulate.(coef(model), last(dims) + burn, rng)
+    A = [DynamicKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...) for Ap in coef(model)]
+    for (p, Ap) in pairs(A)
+        loadings(Ap) .= λ[p][:, (burn + lags(model) + 1):(last(dims) + burn)]
+    end
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+    ε = simulate(dist(model), last(dims) + burn, rng)
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n + 1, t)
-        if t > 1
+        yt .= selectdim(ε, n + 1, t)
+        if t > lags(model)
             # autoregressive component
-            for r in 1:rank(A_burn)
-                yt .+= loadings(A_burn)[r, t - 1] .*
-                       tucker(selectdim(y_burn, n + 1, t - 1), U[r])
+            for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
+                yt .+= λpr[t] .* tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
             end
         end
     end
 
     # simulate data
-    y_sim = similar(data(model))
-    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
-        if t == 1
-            yt .= selectdim(y_burn, n + 1, burn + 1)
+    y = similar(data(model))
+    for (t, yt) in pairs(eachslice(y, dims = n + 1))
+        if t <= lags(model)
+            yt .= selectdim(y_burn, n + 1, burn + t)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
+            yt .= selectdim(ε, n + 1, burn + t)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r, t - 1] .*
-                       tucker(selectdim(y_sim, n + 1, t - 1), U[r])
+            for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
+                yt .+= λpr[burn + t] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
         end
     end
 
-    return DynamicTensorAutoregression(y_sim, ε_sim, A_sim)
+    return DynamicTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
 end
 
 """

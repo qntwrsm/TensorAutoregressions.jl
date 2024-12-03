@@ -328,66 +328,47 @@ function smoother(model::DynamicTensorAutoregression)
 end
 
 """
-    simulate(A, burn, rng) -> (A_sim, A_burn)
+    simulate(A, S, rng) -> λ
 
-Simulate the dynamic loadings from the dynamic Kruskal coefficient tensor `A` with a burn-in
-period of `burn` using the random number generator `rng`.
+Simulate the dynamic loadings from the dynamic Kruskal coefficient tensor `A` `S` times
+using the random number generator `rng`.
 """
-function simulate(A::DynamicKruskal, burn::Integer, rng::AbstractRNG)
-    A_burn = DynamicKruskal(similar(loadings(A), size(loadings(A), 1), burn), intercept(A),
-                            dynamics(A), cov(A), factors(A), rank(A))
-    dist = MvNormal(cov(A_burn))
-    # burn-in
-    for (t, λt) in pairs(eachslice(loadings(A_burn), dims = 2))
-        if t == 1
+function simulate(A::DynamicKruskal, S::Integer, rng::AbstractRNG)
+    λ = similar(loadings(A), rank(A), S)
+    dist = MvNormal(cov(A))
+    # simulate
+    for (s, λs) in pairs(eachcol(λ))
+        if s == 1
             # initial condition
-            λt .= rand(rng, dist)
+            λs .= rand(rng, dist)
         else
-            λt .= intercept(A_burn) + dynamics(A_burn) * loadings(A_burn)[:, t - 1] +
-                  rand(rng, dist)
+            λs .= intercept(A) + dynamics(A) * λ[:, s - 1] + rand(rng, dist)
         end
     end
 
-    A_sim = DynamicKruskal((copy(getproperty(A, p)) for p in propertynames(A))...)
-    dist = MvNormal(cov(A_sim))
-    # simulate
-    for (t, λt) in pairs(eachslice(loadings(A_sim), dims = 2))
-        λt_lag = t == 1 ? loadings(A_burn)[:, end] : loadings(A_sim)[:, t - 1]
-        λt .= intercept(A_sim) + dynamics(A_sim) * λt_lag + rand(rng, dist)
-    end
-
-    return (A_sim, A_burn)
+    return λ
 end
 
 """
-    simulate(ε, burn, rng) -> (ε_sim, ε_burn)
+    simulate(ε, S, rng) -> e
 
-Simulate from the tensor error distribution `ε` with a burn-in period of `burn` using the
-random number generator `rng`.
+Simulate from the tensor error distribution `ε` `S` times using the random number generator
+`rng`.
 """
-simulate(ε::WhiteNoise, burn::Integer, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
-function simulate(ε::TensorNormal, burn::Integer, rng::AbstractRNG)
-    dims = size(resid(ε))
-    n = ndims(resid(ε)) - 1
+simulate(ε::WhiteNoise, S::Integer, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
+function simulate(ε::TensorNormal, S::Integer, rng::AbstractRNG)
+    dims = size.(cov(ε), 1)
 
     # Cholesky decompositions of Σᵢ
     C = getproperty.(cholesky.(cov(ε)), :L)
 
-    ε_burn = TensorNormal(similar(resid(ε), dims[1:n]..., burn), cov(ε))
-    # burn-in
-    for εt in eachslice(resid(ε_burn), dims = n + 1)
-        # sample independent random normals and use tucker product with Cholesky
-        # decompositions
-        εt .= tucker(randn(rng, dims[1:n]...), C)
-    end
-
-    ε_sim = TensorNormal(copy(cov(ε)))
+    e = zeros(dims..., S)
     # simulate
-    for εt in eachslice(resid(ε_sim), dims = n + 1)
+    for es in eachslice(e, dims = length(dims) + 1)
         # sample independent random normals and use tucker product with Cholesky
         # decompositions
-        εt .= tucker(randn(rng, dims[1:n]...), C)
+        es .= tucker(randn(rng, dims...), C)
     end
 
-    return (ε_sim, ε_burn)
+    return e
 end

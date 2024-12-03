@@ -30,7 +30,7 @@ export
 
 # interface methods
 ## getters
-      data, coef, dist,   # general
+      data, coef, dist, lags, # general
       residuals, cov, # residuals
       factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
 
