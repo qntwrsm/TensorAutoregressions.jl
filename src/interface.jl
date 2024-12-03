@@ -166,13 +166,13 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
 end
 
 """
-    fit!(model; init_method=(coef=:data, dist=:data), ϵ=1e-4, max_iter=1000, verbose=false)
-        -> model
+    fit!(model; init_method=(coef=:data, dist=:data), tolerance=1e-4, max_iter=1000,
+         verbose=false) -> model
 
-Fit the tensor autoregressive model described by `model` to the data with tolerance `ϵ` and
-maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
-is printed. `init_method` indicates which method is used for initialization of the
-parameters.
+Fit the tensor autoregressive model described by `model` to the data with tolerance
+`tolerance` and maximum number of iterations `max_iter`. If `verbose` is true a summary of
+the model fitting is printed. `init_method` indicates which method is used for
+initialization of the parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
@@ -192,6 +192,7 @@ function fit!(model::AbstractTensorAutoregression;
         println("===========================")
         println("Dimensions: $(size(data(model))[1:end-1])")
         println("Number of observations: $(size(data(model))[end])")
+        println("Number of lags: $(lags(model))")
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ",
