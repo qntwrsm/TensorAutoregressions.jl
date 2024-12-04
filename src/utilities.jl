@@ -55,54 +55,38 @@ end
 """
     moving_average(model, n) -> Ψ
 
-Moving average, ``MA(∞)``, representation of the tensor autoregressive model `model`,
+Moving average, ``MA(∞)``, representation of the static tensor autoregressive model `model`,
 computed up to the `n`th term.
 """
 function moving_average(model::StaticTensorAutoregression, n::Integer)
-    dims = size(coef(model))
-    R = (length(dims) ÷ 2 + 1):length(dims)
+    dims = size(coef(model)[1])
+    m = (length(dims) ÷ 2 + 1):length(dims)
+    K = prod(dims[m])
+    Ty = eltype(data(model))
+
+    # identity matrix
+    Id = I(K)
 
     # matricize Kruskal tensor
-    An = matricize(full(coef(model)), R)
+    Am = matricize.(full.(coef(model)), Ref(m))
 
     # moving average coefficients
-    Ψ = zeros(dims..., n + 1)
-    for (h, ψh) in pairs(eachslice(Ψ, dims = ndims(Ψ)))
-        ψh .= tensorize(An^(h - 1), R, dims)
-    end
-
-    return Ψ
-end
-function moving_average(model::DynamicTensorAutoregression, n::Integer)
-    dims = size(coef(model))
-    R = (length(dims) ÷ 2 + 1):(length(dims) - 1)
-
-    # tensorize identity matrix
-    Id = tensorize(I(prod(dims[R])), R, dims[1:(end - 1)])
-
-    # matricize Kruskal tensor
-    An = matricize(full(coef(model)), R)
-
-    # moving average coefficients
-    Ψ = zeros(dims[1:(end - 1)]..., n + 1, last(dims))
-    for (t, ψt) in pairs(eachslice(Ψ, dims = ndims(Ψ)))
-        # sample particles
-        particles = particle_sampler(model, n + 1, time = t - 1)
-        # cumulative product
-        Λ = cumprod(selectdim(particles, ndims(particles), 2:(n + 1)),
-                    dims = ndims(particles))
-        # uncertainty aggregation
-        λ = dropdims(mean(Λ, dims = 2), dims = 2)
-        for (h, ψh) in pairs(eachslice(ψt, dims = ndims(ψt)))
-            if h == 1
-                ψh .= Id
-            else
-                ψh .= λ[1, h - 1] * tensorize(An^(h - 1), R, size(ψh))
+    Ψm = zeros(Ty, K, K, n + 1)
+    for (h, ψh) in pairs(eachslice(Ψm, dims = ndims(Ψm)))
+        if h == 1
+            ψh .= Id
+        else
+            for (p, Amp) in pairs(Am)
+                if h > p
+                    ψh .+= Ψm[:, :, h - p] * Amp
+                else
+                    break
+                end
             end
         end
     end
 
-    return Ψ
+    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref(dims)), dims = length(dims) + 1)
 end
 
 """
