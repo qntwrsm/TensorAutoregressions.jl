@@ -255,10 +255,10 @@ function fit!(model::AbstractTensorAutoregression;
 end
 
 """
-    forecast(model, periods) -> forecasts
+    forecast(model, periods[, samples=1000]) -> forecasts
 
-Compute forecasts `periods` periods ahead using fitted tensor autoregressive
-model `model`.
+Compute forecasts `periods` periods ahead using fitted tensor autoregressive model `model`,
+using `samples` for the Monte Carlo estimate of in the dynamic case.
 """
 function forecast(model::StaticTensorAutoregression, periods::Integer)
     dims = size(data(model))
@@ -270,7 +270,6 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
 
     # forecast data using tensor autoregression
     forecasts = zeros(Ty, dims[1:n]..., periods)
-    # forecast
     for h in 1:periods, (p, Ap) in pairs(coef(model))
         if h <= p
             yp = selectdim(data(model), n + 1, last(dims) + h - p)
@@ -284,34 +283,14 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
 
     return forecasts
 end
-function forecast(model::DynamicTensorAutoregression, periods::Integer)
+function forecast(model::DynamicTensorAutoregression, periods::Integer, samples::Integer = 1000)
     dims = size(data(model))
-    n = ndims(data(model)) - 1
-    Ty = eltype(data(model))
 
-    # sample dynamic loadings particles
-    particles = particle_sampler(model, periods)
+    # sample conditional paths
+    paths = sampler(model, samples, periods, last(dims))
 
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
-    # forecast data using tensor autoregression
-    forecasts = zeros(Ty, dims[1:n]..., periods)
-    # forecast
-    for h in 1:periods, (p, Ap) in pairs(coef(model))
-        if h <= p
-            yp = selectdim(data(model), n + 1, last(dims) + h - p)
-        else
-            yp = selectdim(forecasts, n + 1, h - p)
-        end
-        for r in 1:rank(Ap)
-            s = sum(rank(model)[1:(p - 1)]) + r
-            selectdim(forecasts, n + 1, h) .+= mean(prod(particles[s, :, 1:h], dims = 2)) *
-                                               tucker(yp, U[p][r])
-        end
-    end
-
-    return forecasts
+    # Monte Carlo estimate
+    return dropdims(mean(paths, dims = ndims(paths)), dims = ndims(paths))
 end
 
 """
