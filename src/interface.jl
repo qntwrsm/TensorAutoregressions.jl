@@ -12,27 +12,31 @@ interface.jl
 """
     TensorAutoregression(y, R; dynamic=false, dist=:white_noise) -> model
 
-Constructs a tensor autoregressive model for data `y` with autoregressive coefficient tensor
-of rank `R`, potentially dynamic, and tensor error distribution `dist`.
+Constructs a tensor autoregressive model for data `y` with autoregressive coefficient
+tensors of rank `R` for lags 1 until ``P``, potentially dynamic, and tensor error
+distribution `dist`.
 """
-function TensorAutoregression(y::AbstractArray, R::Integer; dynamic::Bool = false,
+function TensorAutoregression(y::AbstractArray, R::AbstractArray; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
     dims = size(y)
     n = ndims(y) - 1
+    p = length(R)
 
     # check model specification
     dynamic && dist == :white_noise &&
         throw(ArgumentError("dynamic model with white noise error not supported."))
 
-    # instantiate Kruskal autoregressive tensor
+    # instantiate Kruskal autoregressive tensors
     if dynamic
-        A = DynamicKruskal(similar(y, R, last(dims) - 1), similar(y, R),
-                           Diagonal(similar(y, R)), Diagonal(similar(y, R)),
-                           [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
+        A = [DynamicKruskal(similar(y, Rp, last(dims) - p), similar(y, Rp),
+                            Diagonal(similar(y, Rp)), Diagonal(similar(y, Rp)),
+                            [similar(y, dims[i - n * ((i - 1) ÷ n)], Rp) for i in 1:(2n)],
+                            Rp) for Rp in R]
         model = DynamicTensorAutoregression
     else
-        A = StaticKruskal(similar(y, R),
-                          [similar(y, dims[i - n * ((i - 1) ÷ n)], R) for i in 1:(2n)], R)
+        A = [StaticKruskal(similar(y, Rp),
+                           [similar(y, dims[i - n * ((i - 1) ÷ n)], Rp) for i in 1:(2n)],
+                           Rp) for Rp in R]
         model = StaticTensorAutoregression
     end
 
@@ -53,9 +57,10 @@ end
     TensorAutoregression(dims, R; dynamic=false, dist=:white_noise) -> model
 
 Constructs a tensor autoregressive model of dimensions `dims` with autoregressive
-coefficient tensor of rank `R`, potentially dynamic, and tensor error distribution `dist`.
+coefficient tensors of rank `R` for lags 1 until ``P``, potentially dynamic, and tensor
+error distribution `dist`.
 """
-function TensorAutoregression(dims::Dims, R::Integer; dynamic::Bool = false,
+function TensorAutoregression(dims::Dims, R::AbstractArray; dynamic::Bool = false,
                               dist::Symbol = :white_noise)
     TensorAutoregression(zeros(dims), R, dynamic = dynamic, dist = dist)
 end
@@ -72,44 +77,45 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # Kruskal coefficient
-    A_sim = StaticKruskal((copy(getproperty(coef(model), p)) for p in propertynames(coef(model)))...)
-
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+    ε = simulate(dist(model), last(dims) + burn, rng)
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n + 1, t)
-        if t > 1
+        yt .= selectdim(ε, n + 1, t)
+        if t > lags(model)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_burn, n + 1, t - 1), U[r])
+            for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
+                yt .+= loadings(Ap)[r] .* tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
             end
         end
     end
 
     # simulate data
-    y_sim = similar(data(model))
-    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
-        if t == 1
-            yt .= selectdim(y_burn, n + 1, burn + 1)
+    y = similar(data(model))
+    for (t, yt) in pairs(eachslice(y, dims = n + 1))
+        if t <= lags(model)
+            yt .= selectdim(y_burn, n + 1, burn + t)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
+            yt .= selectdim(ε, n + 1, burn + t)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r] .* tucker(selectdim(y_sim, n + 1, t - 1), U[r])
+            for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
+                yt .+= loadings(Ap)[r] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
         end
     end
 
-    return StaticTensorAutoregression(y_sim, ε_sim, A_sim)
+    # Kruskal coefficient
+    A = [StaticKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+         for Ap in coef(model)]
+
+    return StaticTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
 end
 function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
@@ -117,52 +123,55 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    (A_sim, A_burn) = simulate(coef(model), burn, rng)
+    λ = simulate.(coef(model), last(dims) + burn, rng)
+    A = [DynamicKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+         for Ap in coef(model)]
+    for (p, Ap) in pairs(A)
+        loadings(Ap) .= λ[p][:, (burn + lags(model) + 1):(last(dims) + burn)]
+    end
 
     # tensor error distribution
-    (ε_sim, ε_burn) = simulate(dist(model), burn + 1, rng)
+    ε = simulate(dist(model), last(dims) + burn, rng)
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + 1)
+    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
-        yt .= selectdim(resid(ε_burn), n + 1, t)
-        if t > 1
+        yt .= selectdim(ε, n + 1, t)
+        if t > lags(model)
             # autoregressive component
-            for r in 1:rank(A_burn)
-                yt .+= loadings(A_burn)[r, t - 1] .*
-                       tucker(selectdim(y_burn, n + 1, t - 1), U[r])
+            for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
+                yt .+= λpr[t] .* tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
             end
         end
     end
 
     # simulate data
-    y_sim = similar(data(model))
-    for (t, yt) in pairs(eachslice(y_sim, dims = n + 1))
-        if t == 1
-            yt .= selectdim(y_burn, n + 1, burn + 1)
+    y = similar(data(model))
+    for (t, yt) in pairs(eachslice(y, dims = n + 1))
+        if t <= lags(model)
+            yt .= selectdim(y_burn, n + 1, burn + t)
         else
             # errors
-            yt .= selectdim(resid(ε_sim), n + 1, t - 1)
+            yt .= selectdim(ε, n + 1, burn + t)
             # autoregressive component
-            for r in 1:rank(A_sim)
-                yt .+= loadings(A_sim)[r, t - 1] .*
-                       tucker(selectdim(y_sim, n + 1, t - 1), U[r])
+            for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
+                yt .+= λpr[burn + t] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
         end
     end
 
-    return DynamicTensorAutoregression(y_sim, ε_sim, A_sim)
+    return DynamicTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
 end
 
 """
-    fit!(model; init_method=(coef=:data, dist=:data), ϵ=1e-4, max_iter=1000, verbose=false)
-        -> model
+    fit!(model; init_method=(coef=:data, dist=:data), tolerance=1e-4, max_iter=1000,
+         verbose=false) -> model
 
-Fit the tensor autoregressive model described by `model` to the data with tolerance `ϵ` and
+Fit the tensor autoregressive model described by `model` to the data with `tolerance` and
 maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
 is printed. `init_method` indicates which method is used for initialization of the
 parameters.
@@ -185,6 +194,7 @@ function fit!(model::AbstractTensorAutoregression;
         println("===========================")
         println("Dimensions: $(size(data(model))[1:end-1])")
         println("Number of observations: $(size(data(model))[end])")
+        println("Number of lags: $(lags(model))")
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
         println("Coefficient tensor: ",
@@ -245,50 +255,42 @@ function fit!(model::AbstractTensorAutoregression;
 end
 
 """
-    forecast(model, periods) -> forecasts
+    forecast(model, periods[, samples=1000]) -> forecasts
 
-Compute forecasts `periods` periods ahead using fitted tensor autoregressive
-model `model`.
+Compute forecasts `periods` periods ahead using fitted tensor autoregressive model `model`,
+using `samples` for the Monte Carlo estimate of in the dynamic case.
 """
 function forecast(model::StaticTensorAutoregression, periods::Integer)
     dims = size(data(model))
     n = ndims(data(model)) - 1
+    Ty = eltype(data(model))
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:n]..., periods)
-    # last observation
-    yT = selectdim(data(model), n + 1, last(dims))
-    # forecast
-    for h in 1:periods, r in 1:rank(model)
-        selectdim(forecasts, n + 1, h) .= loadings(model)[r]^h * tucker(yT, U[r] .^ h)
+    forecasts = zeros(Ty, dims[1:n]..., periods)
+    for h in 1:periods, (p, Ap) in pairs(coef(model))
+        if h <= p
+            yp = selectdim(data(model), n + 1, last(dims) + h - p)
+        else
+            yp = selectdim(forecasts, n + 1, h - p)
+        end
+        for r in 1:rank(Ap)
+            selectdim(forecasts, n + 1, h) .+= loadings(Ap)[r] * tucker(yp, U[p][r])
+        end
     end
 
     return forecasts
 end
-function forecast(model::DynamicTensorAutoregression, periods::Integer)
+function forecast(model::DynamicTensorAutoregression, periods::Integer, samples::Integer = 1000)
     dims = size(data(model))
-    n = ndims(data(model)) - 1
 
-    # sample dynamic loadings particles
-    particles = particle_sampler(model, periods)
+    # sample conditional paths
+    paths = sampler(model, samples, periods, last(dims))
 
-    # outer product of Kruskal factors
-    U = outer(coef(model))
-
-    # forecast data using tensor autoregression
-    forecasts = similar(data(model), dims[1:n]..., periods)
-    # last observation
-    yT = selectdim(data(model), n + 1, last(dims))
-    # forecast
-    for h in 1:periods, r in 1:rank(model)
-        selectdim(forecasts, n + 1, h) .= mean(prod(particles[r, :, 1:h], dims = 2)) *
-                                          tucker(yT, U[r] .^ h)
-    end
-
-    return forecasts
+    # Monte Carlo estimate
+    return dropdims(mean(paths, dims = ndims(paths)), dims = ndims(paths))
 end
 
 """
