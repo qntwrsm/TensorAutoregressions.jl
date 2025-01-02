@@ -294,29 +294,50 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer, samples:
 end
 
 """
-    irf(model, periods; alpha=.05, orth=false) -> irfs
+    irf(model, periods; alpha=0.05[, samples=100]) -> irfs
 
-Compute impulse response functions `periods` periods ahead and corresponding `alpha`% upper
-and lower confidence bounds using fitted tensor autoregressive model `model`. Upper and
-lower confidence bounds are computed using Monte Carlo simulation. If `orth` is true, the
-orthogonalized impulse response functions are computed.
+Compute generalized impulse response functions `periods` ahead and corresponding `alpha`%
+upper and lower confidence bounds using fitted tensor autoregressive model `model`. Upper
+and lower confidence bounds are computed using Monte Carlo simulation. In case of a dynamic
+model `samples` are used to produce a Monte Carlo estimate for the generalized impulse
+response functions.
 """
-function irf(model::AbstractTensorAutoregression, periods::Integer; alpha::Real = 0.05,
-             orth::Bool = false)
-    if model isa StaticTensorAutoregression
-        irf_type = StaticIRF
-    else
-        irf_type = DynamicIRF
-    end
-
+function irf(model::StaticTensorAutoregression, periods::Integer; alpha::Real = 0.05)
     # moving average representation
     Ψ = moving_average(model, periods)
 
-    # orthogonalize
-    orth ? Ψ = orthogonalize(Ψ, cov(model)) : nothing
+    # girf
+    Ψ_star = integrate(Ψ, cov(model))
 
     # confidence bounds
-    (lower, upper) = confidence_bounds(model, periods, alpha, orth)
+    (lower, upper) = confidence_bounds(model, periods, alpha)
 
-    return irf_type(Ψ, lower, upper, orth)
+    return StaticIRF(Ψ_star, lower, upper)
+end
+function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real = 0.05, samples::Integer = 100)
+    Ψ_stars = map(1:samples) do _
+        # sample conditional paths
+        cond = sampler(model, samples, periods, σ, index)
+
+        # sample unconditional paths
+        uncond = sampler(model, samples, periods)
+
+        # Monte Carlo estimate of conditional expectations
+        dropdims(mean(cond, dims = ndims(cond)), dims = ndims(cond)) .- dropdims(mean(uncond, dims = ndims(uncond)), dims = ndims(uncond))
+    end
+    Ψ_stars = cat(Ψ_stars..., dims = ndims(Ψ_stars[1]) + 1)
+
+    # Monte Carlo estimate
+    Ψ_star = mean(Ψ_stars, dims = ndims(Ψ_stars))
+
+    # quantiles
+    lower_idx = round(Int, samples * α / 2)
+    upper_idx = round(Int, samples * (1.0 - α / 2))
+
+    # confidence bounds
+    Ψ_sorted = sort(Ψ_stars, dims = ndims(Ψ_stars))
+    lower = selectdim(Ψ_sorted, ndims(Ψ_sorted), lower_idx)
+    upper = selectdim(Ψ_sorted, ndims(Ψ_sorted), upper_idx)
+
+    return DynamicIRF(Ψ_star, lower, upper)
 end

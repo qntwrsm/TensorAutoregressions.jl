@@ -234,43 +234,39 @@ dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(mode
 """
     AbstractIRF
 
-Abstract type for impulse response functions (IRFs).
+Abstract type for (generalized) impulse response functions (IRFs).
 """
 abstract type AbstractIRF end
 
 """
     StaticIRF <: AbstractIRF
 
-Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
-the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
-is orthogonalized.
+Static (generalized) impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and `orth` as
+whether the IRF is orthogonalized.
 """
 struct StaticIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
-    orth::Bool
-    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray,
-                       orth::Bool)
-        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray)
+        return new{typeof(Ψ)}(Ψ, lower, upper)
     end
 end
 
 """
     DynamicIRF <: AbstractIRF
 
-Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
-the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
-is orthogonalized.
+Dynamic (generalized) impulse response function (IRF) with `Ψ` as the IRF matrix, `lower`
+and `upper` as the lower and upper bounds of the ``α``% confidence interval, and `orth` as
+whether the IRF is orthogonalized.
 """
 struct DynamicIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
-    orth::Bool
-    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray,
-                        orth::Bool)
-        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray)
+        return new{typeof(Ψ)}(Ψ, lower, upper)
     end
 end
 
@@ -297,4 +293,3 @@ end
 function upper(irfs::DynamicIRF, impulse, response, time)
     @view upper(irfs)[impulse..., response..., :, time]
 end
-orth(irfs::AbstractIRF) = irfs.orth
