@@ -177,11 +177,11 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
                                  rng = rng)
 
     # sample observation noise
-    noise = simulate(dist(model), samples * length(conditional) * periods, rng)
+    noise = simulate(dist(model), periods * samples * length(conditional), rng)
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, samples, length(conditional))
-    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths)))
+    paths = similar(data(model), dims[1:n]..., periods, length(conditional), samples)
+    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
         path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),
@@ -205,8 +205,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     noise[index..., 1:(periods * samples):end] .= shock
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, samples, length(conditional))
-    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths)))
+    paths = similar(data(model), dims[1:n]..., periods, length(conditional), samples)
+    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
         path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),

@@ -255,10 +255,11 @@ function fit!(model::AbstractTensorAutoregression;
 end
 
 """
-    forecast(model, periods[, samples=1000]) -> forecasts
+    forecast(model, periods[, samples = 1000, rng = Xoshiro()]) -> forecasts
 
 Compute forecasts `periods` periods ahead using fitted tensor autoregressive model `model`,
-using `samples` for the Monte Carlo estimate of in the dynamic case.
+using `samples` and random number generator `rng` for the Monte Carlo estimate of in the
+dynamic case.
 """
 function forecast(model::StaticTensorAutoregression, periods::Integer)
     dims = size(data(model))
@@ -284,24 +285,22 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
     return forecasts
 end
 function forecast(model::DynamicTensorAutoregression, periods::Integer,
-                  samples::Integer = 1000)
-    dims = size(data(model))
-
+                  samples::Integer = 1000, rng::AbstractRNG = Xoshiro())
     # sample conditional paths
-    paths = sampler(model, samples, periods, last(dims))
+    paths = sampler(model, samples, periods, nobs(model), rng)
 
     # Monte Carlo estimate
     return dropdims(mean(paths, dims = ndims(paths)), dims = ndims(paths))
 end
 
 """
-    irf(model, periods; alpha=0.05[, samples=100]) -> irfs
+    irf(model, periods; alpha = 0.05[, samples = 100, rng = Xoshiro()]) -> irfs
 
 Compute generalized impulse response functions `periods` ahead and corresponding `alpha`%
 upper and lower confidence bounds using fitted tensor autoregressive model `model`. Upper
 and lower confidence bounds are computed using Monte Carlo simulation. In case of a dynamic
-model `samples` are used to produce a Monte Carlo estimate for the generalized impulse
-response functions.
+model `samples` and random number generator `rng` are used to produce a Monte Carlo estimate
+for the generalized impulse response functions.
 """
 function irf(model::StaticTensorAutoregression, periods::Integer; alpha::Real = 0.05)
     # moving average representation
@@ -315,18 +314,22 @@ function irf(model::StaticTensorAutoregression, periods::Integer; alpha::Real = 
 
     return StaticIRF(Ψ_star, lower, upper)
 end
+#TODO Incorporate shock and index into dynamic IRF.
+#TODO Additionally DynamicIRF needs to be based on single shock basis if computation time is too large.
 function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real = 0.05,
-             samples::Integer = 100)
+             samples::Integer = 100, rng::AbstractRNG = Xoshiro())
     Ψ_stars = map(1:samples) do _
         # sample conditional paths
-        cond = sampler(model, samples, periods, σ, index)
+        conditional = sampler(model, samples, periods, (lags(model) + 1):nobs(model), shock,
+                              index, rng)
 
         # sample unconditional paths
-        uncond = sampler(model, samples, periods)
+        unconditional = sampler(model, samples, periods, (lags(model) + 1):nobs(model), rng)
 
         # Monte Carlo estimate of conditional expectations
-        dropdims(mean(cond, dims = ndims(cond)), dims = ndims(cond)) .-
-        dropdims(mean(uncond, dims = ndims(uncond)), dims = ndims(uncond))
+        n = ndims(conditional)
+        dropdims(mean(conditional, dims = n), dims = n) .-
+        dropdims(mean(unconditional, dims = n), dims = n)
     end
     Ψ_stars = cat(Ψ_stars..., dims = ndims(Ψ_stars[1]) + 1)
 
@@ -334,8 +337,8 @@ function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real =
     Ψ_star = mean(Ψ_stars, dims = ndims(Ψ_stars))
 
     # quantiles
-    lower_idx = round(Int, samples * α / 2)
-    upper_idx = round(Int, samples * (1.0 - α / 2))
+    lower_idx = round(Int, samples * alpha / 2)
+    upper_idx = round(Int, samples * (1.0 - alpha / 2))
 
     # confidence bounds
     Ψ_sorted = sort(Ψ_stars, dims = ndims(Ψ_stars))
