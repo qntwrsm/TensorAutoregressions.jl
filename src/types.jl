@@ -76,7 +76,7 @@ function full(A::DynamicKruskal)
     n = length(factors(A))
     U = [[factors(A)[i][:, r] for i in 1:n] for r in 1:rank(A)]
 
-    return [tucker(ones((1 for _  in 1:n)...), U[r]) for r in 1:rank(A)]
+    return [tucker(ones((1 for _ in 1:n)...), U[r]) for r in 1:rank(A)]
 end
 function outer(A::AbstractKruskal)
     n = length(factors(A)) ÷ 2

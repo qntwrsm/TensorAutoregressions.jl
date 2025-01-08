@@ -283,7 +283,8 @@ function forecast(model::StaticTensorAutoregression, periods::Integer)
 
     return forecasts
 end
-function forecast(model::DynamicTensorAutoregression, periods::Integer, samples::Integer = 1000)
+function forecast(model::DynamicTensorAutoregression, periods::Integer,
+                  samples::Integer = 1000)
     dims = size(data(model))
 
     # sample conditional paths
@@ -314,7 +315,8 @@ function irf(model::StaticTensorAutoregression, periods::Integer; alpha::Real = 
 
     return StaticIRF(Ψ_star, lower, upper)
 end
-function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real = 0.05, samples::Integer = 100)
+function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real = 0.05,
+             samples::Integer = 100)
     Ψ_stars = map(1:samples) do _
         # sample conditional paths
         cond = sampler(model, samples, periods, σ, index)
@@ -323,7 +325,8 @@ function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real =
         uncond = sampler(model, samples, periods)
 
         # Monte Carlo estimate of conditional expectations
-        dropdims(mean(cond, dims = ndims(cond)), dims = ndims(cond)) .- dropdims(mean(uncond, dims = ndims(uncond)), dims = ndims(uncond))
+        dropdims(mean(cond, dims = ndims(cond)), dims = ndims(cond)) .-
+        dropdims(mean(uncond, dims = ndims(uncond)), dims = ndims(uncond))
     end
     Ψ_stars = cat(Ψ_stars..., dims = ndims(Ψ_stars[1]) + 1)
 

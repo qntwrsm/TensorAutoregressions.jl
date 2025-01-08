@@ -86,7 +86,8 @@ function moving_average(model::StaticTensorAutoregression, n::Integer)
         end
     end
 
-    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref(dims)), dims = length(dims) + 1)
+    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref(dims)),
+                 dims = length(dims) + 1)
 end
 
 """
@@ -123,57 +124,37 @@ function integrate(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
-    sampler(model, samples, periods, cond[, shock, index], rng) -> paths
+    sampler(model, samples, periods, conditional[, shock, index], rng) -> paths
 
-Sample conditional paths from the model `periods` ahead conditional on `cond` given an optional `shock` at series given by `index` using random number generator `rng`.
+Sample conditional paths from the model `periods` ahead conditional on `conditional` given
+an optional `shock` at series given by `index` using random number generator `rng`.
 """
-function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer, cond::Integer, rng::AbstractRNG)
+function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
+                 conditional::Integer, rng::AbstractRNG)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
     # sample particles
-    particles = particle_sampler(model, periods, time = cond, samples = samples, rng = rng)
+    particles = particle_sampler(model, periods, time = conditional, samples = samples,
+                                 rng = rng)
 
     # sample observation noise
     noise = simulate(dist(model), samples * periods, rng)
 
     # sample paths
     paths = similar(data(model), dims[1:n]..., periods, samples)
-    for (s, path) in pairs(eachslice(paths, dims = ndims(paths)))
-        for (h, element) in pairs(eachslice(path, dims = ndims(path)))
-            # sample element
-            element .= selectdim(noise, ndims(noise), (s - 1) * periods + h)
-            for (p, Rp) in pairs(rank(model))
-                # lag
-                if h <= p
-                    lag = selectdim(data(model), n + 1, cond + h - p)
-                else
-                    lag = selectdim(path, ndims(path), h - p)
-                end
-                # propagate
-                R = cumsum(rank(model)[1:(p - 1)])
-                for r in 1:Rp
-                    i = R + r
-                    element .+= particles[i, h, s] .* tucker(lag, U[p][r])
-                end
-            end
-        end
-    end
+    path_sampler!(paths, model, particles, noise, conditional)
 
     return paths
 end
-function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer, cond::Integer, shock::Real, index::Dims, rng::AbstractRNG)
+function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
+                 conditional::Integer, shock::Real, index::Dims, rng::AbstractRNG)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
     # sample particles
-    particles = particle_sampler(model, periods, time = cond, samples = samples, rng = rng)
+    particles = particle_sampler(model, periods, time = conditional, samples = samples,
+                                 rng = rng)
 
     # sample observation noise
     noise = simulate(dist(model), samples * periods, rng)
@@ -182,115 +163,95 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
 
     # sample paths
     paths = similar(data(model), dims[1:n]..., periods, samples)
+    path_sampler!(paths, model, particles, noise, conditional)
+
+    return paths
+end
+function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
+                 conditional::AbstractUnitRange, rng::AbstractRNG)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # sample particles
+    particles = particle_sampler(model, periods, time = conditional, samples = samples,
+                                 rng = rng)
+
+    # sample observation noise
+    noise = simulate(dist(model), samples * length(conditional) * periods, rng)
+
+    # sample paths
+    paths = similar(data(model), dims[1:n]..., periods, samples, length(conditional))
+    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths)))
+        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+                      selectdim(noise, n + 1,
+                                ((t - 1) * samples * periods + 1):(t * samples * periods)),
+                      conditional[t])
+    end
+
+    return paths
+end
+function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
+                 conditional::AbstractUnitRange, shock::Real, index::Dims, rng::AbstractRNG)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # sample particles
+    particles = particle_sampler(model, periods, time = conditional, samples = samples,
+                                 rng = rng)
+
+    # sample observation noise
+    noise = simulate(dist(model), periods * samples * length(conditional), rng)
+    # shock
+    noise[index..., 1:(periods * samples):end] .= shock
+
+    # sample paths
+    paths = similar(data(model), dims[1:n]..., periods, samples, length(conditional))
+    for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths)))
+        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+                      selectdim(noise, n + 1,
+                                ((t - 1) * samples * periods + 1):(t * samples * periods)),
+                      conditional[t])
+    end
+
+    return paths
+end
+
+"""
+    path_sampler!(paths, model, particles, noise, conditional)
+
+Sample conditional paths from the `model` given simulated `particles` and `noise`.
+"""
+function path_sampler!(paths::AbstractArray, model::DynamicTensorAutoregression,
+                       particles::AbstractArray, noise::AbstractArray, conditional::Integer)
+    n = ndims(data(model)) - 1
+    R = cumsum(rank(model))
+
+    # outer product of Kruskal factors
+    U = outer.(coef(model))
+
+    # sample paths
     for (s, path) in pairs(eachslice(paths, dims = ndims(paths)))
         for (h, element) in pairs(eachslice(path, dims = ndims(path)))
             # sample element
-            element .= selectdim(noise, ndims(noise), (s - 1) * periods + h)
+            element .= selectdim(noise, n + 1, (s - 1) * size(path, ndims(path)) + h)
             for (p, Rp) in pairs(rank(model))
                 # lag
                 if h <= p
-                    lag = selectdim(data(model), n + 1, cond + h - p)
+                    lag = selectdim(data(model), n + 1, conditional + h - p)
                 else
                     lag = selectdim(path, ndims(path), h - p)
                 end
                 # propagate
-                R = cumsum(rank(model)[1:(p - 1)])
                 for r in 1:Rp
-                    i = R + r
+                    i = (p > 1 ? R[p - 1] : 0) + r
                     element .+= particles[i, h, s] .* tucker(lag, U[p][r])
                 end
             end
         end
     end
 
-    return paths
+    return nothing
 end
-function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer, cond::AbstractUnitRange, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
-    # sample particles
-    particles = particle_sampler(model, periods, time = cond, samples = samples, rng = rng)
-
-    # sample observation noise
-    noise = simulate(dist(model), samples * length(cond) * periods, rng)
-
-    # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, length(cond), samples)
-    for (s, cond_paths) in pairs(eachslice(paths, dims = ndims(paths)))
-        for (t, path) in pairs(eachslice(cond_paths, dims = ndims(cond_paths)))
-            for (h, element) in pairs(eachslice(path, dims = ndims(path)))
-                # sample element
-                element .= selectdim(noise, ndims(noise), (s - 1) * length(cond) * periods + (t - 1) * periods + h)
-                for (p, Rp) in pairs(rank(model))
-                    # lag
-                    if h <= p
-                        lag = selectdim(data(model), n + 1, t + h - p)
-                    else
-                        lag = selectdim(path, ndims(path), h - p)
-                    end
-                    # propagate
-                    R = cumsum(rank(model)[1:(p - 1)])
-                    for r in 1:Rp
-                        i = R + r
-                        element .+= particles[i, h, t, s] .* tucker(lag, U[p][r])
-                    end
-                end
-            end
-        end
-    end
-
-    return paths
-end
-function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer, cond::AbstractUnitRange, shock::Real, index::Dims, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
-    # sample particles
-    particles = particle_sampler(model, periods, time = cond, samples = samples, rng = rng)
-
-    # sample observation noise
-    noise = simulate(dist(model), samples * length(cond) * periods, rng)
-    # shock
-    noise[index..., 1] = shock
-
-    # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, length(cond), samples)
-    for (s, cond_paths) in pairs(eachslice(paths, dims = ndims(paths)))
-        for (t, path) in pairs(eachslice(cond_paths, dims = ndims(cond_paths)))
-            for (h, element) in pairs(eachslice(path, dims = ndims(path)))
-                # sample element
-                element .= selectdim(noise, ndims(noise), (s - 1) * length(cond) * periods + (t - 1) * periods + h)
-                for (p, Rp) in pairs(rank(model))
-                    # lag
-                    if h <= p
-                        lag = selectdim(data(model), n + 1, t + h - p)
-                    else
-                        lag = selectdim(path, ndims(path), h - p)
-                    end
-                    # propagate
-                    R = cumsum(rank(model)[1:(p - 1)])
-                    for r in 1:Rp
-                        i = R + r
-                        element .+= particles[i, h, t, s] .* tucker(lag, U[p][r])
-                    end
-                end
-            end
-        end
-    end
-
-    return paths
-end
-
-"""
-    path_sampler(y, particles, noise, U)
-"""
 
 """
     particle_sampler(model, periods; time=last(size(coef(model))), samples=1000,
