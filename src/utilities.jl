@@ -264,10 +264,8 @@ from `time` and using random number generator `rng`.
 function particle_sampler(model::DynamicTensorAutoregression, periods::Integer;
                           time::Integer = last(size(coef(model))), samples::Integer = 1000,
                           rng::AbstractRNG = Xoshiro())
-    # transition coefficients
-    T = dynamics(coef(model))
-    c = intercept(coef(model))
-    Q = cov(coef(model))
+    # state transition parameters
+    (c, T, Q) = state_transition_params(model)
     # filter
     (a, P, v, _, K) = filter(model)
     # predict
@@ -324,15 +322,43 @@ function collapse(model::DynamicTensorAutoregression)
 end
 
 """
-    state_space(model) -> (y_low, Z_low, H_low, a1, P1)
+    state_transition_params(model) -> (c, T, Q)
 
-State space form of the collapsed dynamic tensor autoregressive model `model` following the
-approach of Jungbacker and Koopman (2015).
+State transition parameters ``c``, ``T``, and ``Q`` of the state space form of the dynamic
+tensor autoregressive model `model`.
 """
-function state_space(model::DynamicTensorAutoregression)
+function state_transition_params(model::DynamicTensorAutoregression)
+    c = vcat(intercept.(coef(model))...)
+    T = Diagonal(vcat(getfield.(dynamics.(coef(model)), :diag)...))
+    Q = Diagonal(vcat(getfield.(cov.(coef(model)), :diag)...))
+
+    return (c, T, Q)
+end
+
+"""
+    state_space_init(model) -> (a1, P1)
+
+State space initial conditions of the state space form of the dynamic tensor autoregressive
+model `model`.
+"""
+function state_space_init(model::DynamicTensorAutoregression)
+    T = eltype(data(model))
+    R = sum(rank(model))
+    a1 = zeros(T, R)
+    P1 = Matrix{T}(I, R, R)
+
+    return (a1, P1)
+end
+
+"""
+    obs_equation_params(model) -> (y_low, Z_low, H_low)
+
+Observation equation parameters for the collapsed state space form of the dynamic tensor
+autoregressive model `model` following the approach of Jungbacker and Koopman (2015).
+"""
+function obs_equation_params(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
-    Ty = eltype(data(model))
 
     # outer product of Kruskal factors
     U = outer(coef(model))
@@ -351,11 +377,7 @@ function state_space(model::DynamicTensorAutoregression)
     Z_low = A_low .* Z
     H_low = A_low .* Z_basis
 
-    # initial conditions
-    a1 = zeros(Ty, rank(model))
-    P1 = Matrix{Ty}(I, rank(model), rank(model))
-
-    return (y_low, Z_low, H_low, a1, P1)
+    return (y_low, Z_low, H_low)
 end
 
 """
@@ -367,10 +389,9 @@ Kalman gain `K`.
 """
 function filter(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, H, a1, P1) = state_space(model)
-    T = dynamics(coef(model))
-    c = intercept(coef(model))
-    Q = cov(coef(model))
+    (y, Z, H) = obs_equation_params(model)
+    (c, T, Q) = state_transition_params(model)
+    (a1, P1) = state_space_init(model)
 
     # initialize filter output
     a = similar(y, typeof(a1))
@@ -410,8 +431,8 @@ smoothed state `α`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, _, a1, P1) = state_space(model)
-    T = dynamics(coef(model))
+    (y, Z, _) = obs_equation_params(model)
+    (_, T, _) = state_transition_params(model)
 
     # filter
     (a, P, v, F, K) = filter(model)
@@ -422,8 +443,8 @@ function smoother(model::DynamicTensorAutoregression)
     Γ = similar(P, length(y) - 1)
 
     # initialize smoother
-    r = zero(a1)
-    N = zero(P1)
+    r = zero(a[1])
+    N = zero(P[1])
     L = similar(T)
 
     # smoother
