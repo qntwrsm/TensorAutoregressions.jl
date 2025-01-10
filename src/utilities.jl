@@ -288,40 +288,6 @@ function particle_sampler(model::DynamicTensorAutoregression, periods::Integer;
 end
 
 """
-    collapse(model) -> (A_low, Z_basis)
-
-Low-dimensional collapsing matrices for the dynamic tensor autoregressive model `model`
-following the approach of Jungbacker and Koopman (2015).
-"""
-function collapse(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
-    # precision matrices
-    Ω = inv.(cov(model))
-
-    # outer product of Kruskal factors
-    U = outer(coef(model))
-
-    # scaling
-    S = [[Ω[i] * U[r][i] for i in 1:n] for r in 1:rank(model)]
-
-    # collapsing matrices
-    Z = [stack([vec(tucker(yt, U[r])) for r in 1:rank(model)])
-         for yt in Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - 1)]
-    Z_scaled = [stack([vec(tucker(yt, S[r])) for r in 1:rank(model)])
-                for yt in Iterators.take(eachslice(data(model), dims = n + 1),
-                                         last(dims) - 1)]
-    C = transpose.(Z) .* Z_scaled
-    Z_basis = transpose.(C .\ transpose.(Z))
-    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n),
-                                          Ref((dims[1:n]..., rank(model)))), Ref(Ω)),
-                       n + 1)
-
-    return (A_low, Z_basis)
-end
-
-"""
     state_transition_params(model) -> (c, T, Q)
 
 State transition parameters ``c``, ``T``, and ``Q`` of the state space form of the dynamic
@@ -351,6 +317,81 @@ function state_space_init(model::DynamicTensorAutoregression)
 end
 
 """
+    loading_matrix(model) -> L
+
+High-dimensional loading matrix for the state space form of the dynamic tensor
+autoregressive model `model`.
+"""
+function loading_matrix(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # outer product of Kruskal factors
+    U = outer.(coef(model))
+
+    # high-dimensional time-varying loading matrix
+    L_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
+         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
+         for (p, Rp) in pairs(rank(model))])
+
+    return broadcast(splat(hcat), eachrow(L_unstacked))
+end
+
+"""
+    scaled_loading_matrix(model) -> L
+
+High-dimensional scaled loading matrix for the state space form of the dynamic
+tensor autoregressive model `model`.
+"""
+function scaled_loading_matrix(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # precision matrices
+    Ω = inv.(cov(model))
+
+    # outer product of Kruskal factors
+    U = outer.(coef(model))
+
+    # scaling
+    S = [[[Ω[i] * U[p][r][i] for i in 1:n] for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
+
+    # high-dimensional scaled time-varying loading matrix
+    L_unstacked = stack([[stack([vec(tucker(yt, S[p][r])) for r in 1:Rp])
+         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
+         for (p, Rp) in pairs(rank(model))])
+
+    return broadcast(splat(hcat), eachrow(L_unstacked))
+end
+
+"""
+    collapse(model) -> (A_low, Z_basis)
+
+Low-dimensional collapsing matrices for the dynamic tensor autoregressive model `model`
+following the approach of Jungbacker and Koopman (2015).
+"""
+function collapse(model::DynamicTensorAutoregression)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+
+    # precision matrices
+    Ω = inv.(cov(model))
+
+    # high-dimensional (scaled) time-varying loading matrix
+    Z = loading_matrix(model)
+    Z_scaled = scaled_loading_matrix(model)
+    C = transpose.(Z) .* Z_scaled
+
+    # collapsing matrices
+    Z_basis = transpose.(C .\ transpose.(Z))
+    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n),
+                                          Ref((dims[1:n]..., sum(rank(model))))), Ref(Ω)),
+                       n + 1)
+
+    return (A_low, Z_basis)
+end
+
+"""
     obs_equation_params(model) -> (y_low, Z_low, H_low)
 
 Observation equation parameters for the collapsed state space form of the dynamic tensor
@@ -360,15 +401,8 @@ function obs_equation_params(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
-    # high-dimensional system matrices
-    Z_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
-         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
-         for (p, Rp) in pairs(rank(model))])
-    # stack lags for each time point
-    Z = broadcast(splat(hcat), eachrow(Z_unstacked))
+    # high-dimensional time-varying loading matrix
+    Z = loading_matrix(model)
 
     # collapsing matrices
     (A_low, Z_basis) = collapse(model)
@@ -448,7 +482,7 @@ function smoother(model::DynamicTensorAutoregression)
     # initialize smoother
     r = zero(a[1])
     N = zero(P[1])
-    L = similar(T)
+    L = similar(P[1])
 
     # smoother
     for t in reverse(eachindex(y))
@@ -459,7 +493,7 @@ function smoother(model::DynamicTensorAutoregression)
         N .= Z[t]' / F[t] * Z[t] + L' * N * L
 
         # smoothing
-        α = a[t] + P[t] * r
+        α[t] = a[t] + P[t] * r
         V[t] = P[t] - P[t] * N * P[t]
         t > 1 && (Γ[t - 1] = I - P[t] * N)
         t < length(y) && (Γ[t] *= L * P[t])
