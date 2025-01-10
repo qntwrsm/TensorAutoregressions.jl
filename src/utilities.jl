@@ -135,8 +135,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     n = ndims(data(model)) - 1
 
     # sample particles
-    particles = particle_sampler(model, periods, time = conditional, samples = samples,
-                                 rng = rng)
+    particles = particle_sampler(model, periods, conditional, samples, rng)
 
     # sample observation noise
     noise = simulate(dist(model), samples * periods, rng)
@@ -153,8 +152,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     n = ndims(data(model)) - 1
 
     # sample particles
-    particles = particle_sampler(model, periods, time = conditional, samples = samples,
-                                 rng = rng)
+    particles = particle_sampler(model, periods, conditional, samples, rng)
 
     # sample observation noise
     noise = simulate(dist(model), samples * periods, rng)
@@ -173,8 +171,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     n = ndims(data(model)) - 1
 
     # sample particles
-    particles = particle_sampler(model, periods, time = conditional, samples = samples,
-                                 rng = rng)
+    particles = particle_sampler(model, periods, conditional, samples, rng)
 
     # sample observation noise
     noise = simulate(dist(model), periods * samples * length(conditional), rng)
@@ -196,8 +193,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     n = ndims(data(model)) - 1
 
     # sample particles
-    particles = particle_sampler(model, periods, time = conditional, samples = samples,
-                                 rng = rng)
+    particles = particle_sampler(model, periods, conditional, samples, rng)
 
     # sample observation noise
     noise = simulate(dist(model), periods * samples * length(conditional), rng)
@@ -254,34 +250,30 @@ function path_sampler!(paths::AbstractArray, model::DynamicTensorAutoregression,
 end
 
 """
-    particle_sampler(model, periods; time=last(size(coef(model))), samples=1000,
-                     rng=Xoshiro()) -> particles
+    particle_sampler(model, periods, conditional, samples, rng) -> particles
 
 Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic tensor
-autoregressive model `model`, with the number of forward periods given by `periods` starting
-from `time` and using random number generator `rng`.
+autoregressive model `model`, with the number of forward periods given by `periods`
+conditional on `conditional` and using random number generator `rng`.
 """
-function particle_sampler(model::DynamicTensorAutoregression, periods::Integer;
-                          time::Integer = last(size(coef(model))), samples::Integer = 1000,
-                          rng::AbstractRNG = Xoshiro())
+function particle_sampler(model::DynamicTensorAutoregression, periods::Integer, conditional::Integer, samples::Integer,
+                          rng::AbstractRNG)
     # state transition parameters
     (c, T, Q) = state_transition_params(model)
     # filter
-    (a, P, v, _, K) = filter(model)
-    # predict
-    if time == last(size(coef(model)))
-        a_hat = T * a[end] + K[end] * v[end] + c
-        P_hat = T * P[end] * (T - K[end] * Z_star[end])' + Q
-    elseif time < last(size(coef(model)))
-        a_hat = a[time + 1]
-        P_hat = P[time + 1]
-    end
+    (a, P, _, _, _) = filter(model, predict = true)
+    a_hat = a[conditional - lags(model) + 1]
+    P_hat = P[conditional - lags(model) + 1]
 
     # particle sampling
-    particles = similar(a_hat, length(a_hat), samples, periods)
-    particles[:, :, 1] = rand(rng, MvNormal(a_hat, P_hat), samples)
-    for h in 2:periods, s in 1:samples
-        particles[:, s, h] = rand(rng, MvNormal(c + T * particles[:, s, h - 1], Q))
+    particles = similar(a_hat, length(a_hat), periods, samples)
+    base_dist = MvNormal(a_hat, P_hat)
+    for s in 1:samples, h in 1:periods
+        if h == 1
+            particles[:, h, s] = rand(rng, base_dist)
+        else
+            particles[:, h, s] = rand(rng, MvNormal(c + T * particles[:, h - 1, s], Q))
+        end
     end
 
     return particles
@@ -423,21 +415,23 @@ function obs_equation_params(model::DynamicTensorAutoregression)
 end
 
 """
-    filter(model) -> (a, P, v, F, K)
+    filter(model; predict = false) -> (a, P, v, F, K)
 
 Collapsed Kalman filter for the dynamic tensor autoregressive model `model`. Returns the
 filtered state `a`, covariance `P`, forecast error `v`, forecast error variance `F`, and
-Kalman gain `K`.
+Kalman gain `K`. If `predict` is `true` the filter reports the one-step ahead out-of-sample
+prediction.
 """
-function filter(model::DynamicTensorAutoregression)
+function filter(model::DynamicTensorAutoregression; predict::Bool = false)
     # collapsed state space system
     (y, Z, H) = obs_equation_params(model)
     (c, T, Q) = state_transition_params(model)
     (a1, P1) = state_space_init(model)
 
     # initialize filter output
-    a = similar(y, typeof(a1))
-    P = similar(y, typeof(P1))
+    n = length(y) + (predict ? 1 : 0)
+    a = similar(y, typeof(a1), n)
+    P = similar(y, typeof(P1), n)
     v = similar(y)
     F = similar(y, typeof(P1))
     K = similar(y, typeof(P1))
@@ -456,7 +450,7 @@ function filter(model::DynamicTensorAutoregression)
         K[t] = T * P[t] * Z[t]' / F[t]
 
         # prediction
-        if t < length(y)
+        if predict || t < length(y)
             a[t + 1] = T * a[t] + K[t] * v[t] + c
             P[t + 1] = T * P[t] * (T - K[t] * Z[t])' + Q
         end
