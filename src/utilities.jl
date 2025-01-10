@@ -331,8 +331,11 @@ function loading_matrix(model::DynamicTensorAutoregression)
 
     # high-dimensional time-varying loading matrix
     L_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
-         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
-         for (p, Rp) in pairs(rank(model))])
+                          for yt in Iterators.drop(Iterators.take(eachslice(data(model),
+                                                                            dims = n + 1),
+                                                                  last(dims) - p),
+                                                   lags(model) - p)]
+                         for (p, Rp) in pairs(rank(model))])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
 end
@@ -358,8 +361,11 @@ function scaled_loading_matrix(model::DynamicTensorAutoregression)
 
     # high-dimensional scaled time-varying loading matrix
     L_unstacked = stack([[stack([vec(tucker(yt, S[p][r])) for r in 1:Rp])
-         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
-         for (p, Rp) in pairs(rank(model))])
+                          for yt in Iterators.drop(Iterators.take(eachslice(data(model),
+                                                                            dims = n + 1),
+                                                                  last(dims) - p),
+                                                   lags(model) - p)]
+                         for (p, Rp) in pairs(rank(model))])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
 end
@@ -398,7 +404,6 @@ Observation equation parameters for the collapsed state space form of the dynami
 autoregressive model `model` following the approach of Jungbacker and Koopman (2015).
 """
 function obs_equation_params(model::DynamicTensorAutoregression)
-    dims = size(data(model))
     n = ndims(data(model)) - 1
 
     # high-dimensional time-varying loading matrix
