@@ -361,11 +361,14 @@ function obs_equation_params(model::DynamicTensorAutoregression)
     n = ndims(data(model)) - 1
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # high-dimensional system matrices
-    Z = [stack([vec(tucker(yt, U[r])) for r in 1:rank(model)])
-         for yt in Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - 1)]
+    Z_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
+         for yt in Iterators.drop(Iterators.take(eachslice(data(model), dims = n + 1), last(dims) - p), lags(model) - p)]
+         for (p, Rp) in pairs(rank(model))])
+    # stack lags for each time point
+    Z = broadcast(splat(hcat), eachrow(Z_unstacked))
 
     # collapsing matrices
     (A_low, Z_basis) = collapse(model)
@@ -373,7 +376,7 @@ function obs_equation_params(model::DynamicTensorAutoregression)
     # collapsed system
     y_low = [A_low[t] * vec(yt)
              for (t, yt) in enumerate(Iterators.drop(eachslice(data(model), dims = n + 1),
-                                                     1))]
+                                                     lags(model)))]
     Z_low = A_low .* Z
     H_low = A_low .* Z_basis
 
