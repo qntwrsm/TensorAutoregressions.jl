@@ -256,7 +256,8 @@ Forward particle sampler of the filtered state ``αₜ₊ₕ`` for the dynamic t
 autoregressive model `model`, with the number of forward periods given by `periods`
 conditional on `conditional` and using random number generator `rng`.
 """
-function particle_sampler(model::DynamicTensorAutoregression, periods::Integer, conditional::Integer, samples::Integer,
+function particle_sampler(model::DynamicTensorAutoregression, periods::Integer,
+                          conditional::Integer, samples::Integer,
                           rng::AbstractRNG)
     # state transition parameters
     (c, T, Q) = state_transition_params(model)
@@ -267,12 +268,35 @@ function particle_sampler(model::DynamicTensorAutoregression, periods::Integer, 
 
     # particle sampling
     particles = similar(a_hat, length(a_hat), periods, samples)
-    base_dist = MvNormal(a_hat, P_hat)
+    base_dist = MvNormal(a_hat, Symmetric(P_hat))
     for s in 1:samples, h in 1:periods
         if h == 1
             particles[:, h, s] = rand(rng, base_dist)
         else
             particles[:, h, s] = rand(rng, MvNormal(c + T * particles[:, h - 1, s], Q))
+        end
+    end
+
+    return particles
+end
+function particle_sampler(model::DynamicTensorAutoregression, periods::Integer,
+                          conditional::AbstractUnitRange, samples::Integer,
+                          rng::AbstractRNG)
+    # state transition parameters
+    (c, T, Q) = state_transition_params(model)
+    # filter
+    (a, P, _, _, _) = filter(model, predict = true)
+
+    # particle sampling
+    particles = similar(a[1], length(a[1]), periods, length(conditional), samples)
+    for s in 1:samples, (t, time) in pairs(conditional), h in 1:periods
+        if h == 1
+            particles[:, h, t, s] = rand(rng,
+                                         MvNormal(a[time - lags(model) + 1],
+                                                  Symmetric(P[time - lags(model) + 1])))
+        else
+            particles[:, h, t, s] = rand(rng,
+                                         MvNormal(c + T * particles[:, h - 1, t, s], Q))
         end
     end
 
