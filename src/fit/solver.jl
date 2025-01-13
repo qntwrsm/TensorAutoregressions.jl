@@ -16,28 +16,7 @@ solver.jl
 Update parameters of tensor autoregression `model` using an alternating least squares (ALS)
 solve. Wrapper to invoke multiple dispatch over static and dynamic tensor autoregressions.
 """
-update!(model::StaticTensorAutoregression) = als!(coef(model), dist(model), data(model))
-function update!(model::DynamicTensorAutoregression)
-    # E-step
-    # smoother
-    (α, V, Γ) = smoother(model)
-    loadings(model) .= hcat(α...)
-
-    # M-step
-    update_transition!(coef(model), V, Γ)
-    als!(coef(model), dist(model), data(model), V)
-
-    return nothing
-end
-
-"""
-    als!(A, ε, y[, V])
-
-Update Kruskal coefficient tensor `A` and tensor error distribution `ε` for the tensor
-autoregressive model based on data `y` and smoothed loading variance `V` when `A` is dynamic
-using an alternating least squares (ALS) solve.
-"""
-function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
+function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise, <:AbstractVector})
     dims = size(y)
     n = ndims(y) - 1
 
@@ -99,7 +78,7 @@ function als!(A::StaticKruskal, ε::WhiteNoise, y::AbstractArray)
 
     return nothing
 end
-function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
+function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNormal, <:AbstractVector})
     dims = size(y)
     n = ndims(y) - 1
 
@@ -180,7 +159,26 @@ function als!(A::StaticKruskal, ε::TensorNormal, y::AbstractArray)
 
     return nothing
 end
-function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::AbstractVector)
+function update!(model::DynamicTensorAutoregression)
+    # E-step
+    # smoother
+    (α, V, Γ) = smoother(model)
+    loadings(model) .= hcat(α...)
+
+    # M-step
+    update_transition_params!(model, V, Γ)
+    update_obs_params!(model, V)
+
+    return nothing
+end
+
+"""
+    update_obs_params!(model, V)
+
+Update observation equation parameters of the dynamic tensor autoregressive model `model`
+based on smoothed loading variance `V` and using an alternating least squares (ALS) solve.
+"""
+function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVector)
     dims = size(y)
     n = ndims(y) - 1
 
@@ -302,12 +300,12 @@ function als!(A::DynamicKruskal, ε::TensorNormal, y::AbstractArray, V::Abstract
 end
 
 """
-    update_transition!(A, V, Γ)
+    update_transition_params!(model, V, Γ)
 
-Update transition dynamics of dynamic Kruskal coefficient tensor `A` using smoothed loadings
-variance `V`, and autocovariance `Γ`.
+Update transition dynamics of the dynamic Kruskal tensor of the dynamic tensor autoregresive
+model `model` using smoothed loadings variance `V`, and autocovariance `Γ`.
 """
-function update_transition!(A::DynamicKruskal, V::AbstractVector, Γ::AbstractVector)
+function update_transition!(model::DynamicTensorAutoregression, V::AbstractVector, Γ::AbstractVector)
     T = length(V)
 
     # objective closures
