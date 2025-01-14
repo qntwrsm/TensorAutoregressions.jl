@@ -116,18 +116,18 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
             # dependent variable tensor
             Zpr = copy(y_lead)
             for (q, Rq) in pairs(rank(model))
-                s = q == p ? setdiff(1:Rq, r) : 1:Rq
-                for i in s
-                    Zpr .-= loadings(model)[q][i] .* tucker(y_lags[q], U[q][i])
+                r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
+                for s in r_
+                    Zpr .-= loadings(model)[q][s] .* tucker(y_lags[q], U[q][s])
                 end
             end
             for k in 1:n
-                m = setdiff(1:n, k)
+                k_ = setdiff(1:n, k)
                 # matricize dependent variable along k-th mode
-                Zpr_scaled = tucker(Zpr, Cinv[m], m)
+                Zpr_scaled = tucker(Zpr, Cinv[k_], k_)
                 Zkpr = matricize(Zpr_scaled, k)
                 # matricize regressor along k-th mode
-                Xpr = tucker(y_lags[p], S[p][r][m], m)
+                Xpr = tucker(y_lags[p], S[p][r][k_], k_)
                 Xkpr = matricize(Xpr, k)
 
                 # Gram matrix
@@ -154,7 +154,7 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
                 # update covariance
                 Ek = Zkpr - loadings(model)[p][r] .* U[p][r][k] * Xkpr
                 mul!(cov(model)[k].data, Ek, Ek',
-                     inv((last(dims) - lags(model)) * prod(dims[m])), 0.0)
+                     inv((last(dims) - lags(model)) * prod(dims[m])), false)
                 # normalize
                 k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
 
@@ -216,7 +216,8 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # Cholesky decomposition of V
     v_half = similar(V[1], R * (R + 1) ÷ 2, last(dims) - lags(model))
@@ -267,7 +268,7 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
                 Zpr_scaled = tucker(Zpr, Cinv[k_], k_)
                 Zkpr = matricize(Zpr_scaled, k)
                 # matricize regressor along k-th mode
-                Xpr_scaled = tucker(X[p][r], Cinv[k_])
+                Xpr_scaled = tucker(X[p][r], Cinv[k_], k_)
                 Xkpr = matricize(Xpr_scaled, k)
 
                 # Gram matrix
@@ -279,11 +280,15 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
                 M = Zkpr * Xkpr'
 
                 # update factor k
-                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r], G \ M' * Ω[k],
-                            inv(dot(factors(model)[p][k + n][:, r], Ω[k], factors(model)[p][k + n][:, r])))
+                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
+                               G \ M' * Ω[k],
+                               inv(dot(factors(model)[p][k + n][:, r], Ω[k],
+                                       factors(model)[p][k + n][:, r])))
                 # update factor k+n
-                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r], M,
-                            inv(dot(factors(model)[p][k][:, r], G, factors(model)[p][k][:, r])))
+                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
+                               M,
+                               inv(dot(factors(model)[p][k][:, r], G,
+                                       factors(model)[p][k][:, r])))
 
                 # update outer product of Kruskal factors
                 U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
