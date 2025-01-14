@@ -16,60 +16,69 @@ solver.jl
 Update parameters of tensor autoregression `model` using an alternating least squares (ALS)
 solve. Wrapper to invoke multiple dispatch over static and dynamic tensor autoregressions.
 """
-function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise, <:AbstractVector})
-    dims = size(y)
-    n = ndims(y) - 1
+function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise,
+                                                   <:AbstractVector})
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # outer product of Kruskal factors
-    U = outer(A)
+    U = outer.(coef(model))
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # initialize residuals
     resid = copy(y_lead)
 
-    for r in 1:rank(A)
-        s = setdiff(1:rank(A), r)
-        # dependent variable tensor
-        Zr = copy(y_lead)
-        for i in s
-            Zr .-= loadings(A)[i] .* tucker(y_lag, U[r][i])
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            # dependent variable tensor
+            Zpr = copy(y_lead)
+            for (q, Rq) in pairs(rank(model))
+                s = q == p ? setdiff(1:Rq, r) : 1:Rq
+                for i in s
+                    Zpr .-= loadings(model)[q][i] .* tucker(y_lags[q], U[q][i])
+                end
+            end
+            for k in 1:n
+                m = setdiff(1:n, k)
+                # matricize dependent variable along k-th mode
+                Zkpr = matricize(Zpr, k)
+                # matricize regressor along k-th mode
+                Xpr = tucker(y_lags[p], U[p][r][m], m)
+                Xkpr = matricize(Xpr, k)
+
+                # Gram matrix
+                G = Xkpr * Xkpr'
+                # moment matrix
+                M = Zkpr * Xkpr'
+
+                # update factor k
+                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
+                               G \ M',
+                               inv(loadings(model)[p][r]))
+                # update factor k+n
+                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
+                               M,
+                               inv(loadings(model)[p][r] *
+                                   dot(factors(model)[p][k][:, r], G,
+                                       factors(model)[p][k][:, r])))
+
+                # update outer product of Kruskal factors
+                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
+            end
+
+            # regressor tensor
+            Xpr = tucker(y_lags[p], U[p][r])
+
+            # update loading
+            loadings(A)[p][r] = dot(Zpr, Xpr) / norm(Xpr)^2
+
+            # update residuals
+            resid .-= loadings(A)[p][r] .* Xpr
         end
-        for k in 1:n
-            m = setdiff(1:n, k)
-            # matricize dependent variable along k-th mode
-            Zkr = matricize(Zr, k)
-            # matricize regressor along k-th mode
-            Xr = tucker(y_lag, U[r][m], m)
-            Xkr = matricize(Xr, k)
-
-            # Gram matrix
-            G = Xkr * Xkr'
-            # moment matrix
-            M = Zkr * Xkr'
-
-            # update factor k
-            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M',
-                           inv(loadings(A)[r]))
-            # update factor k+n
-            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
-                           inv(loadings(A)[r] *
-                               dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
-
-            # update outer product of Kruskal factors
-            U[r][k] = factors(A)[k + n][:, r] * factors(A)[k][:, r]'
-        end
-
-        # regressor tensor
-        Xr = tucker(y_lag, U[r])
-
-        # update loading
-        loadings(A)[r] = dot(Zr, Xr) / norm(Xr)^2
-
-        # update residuals
-        resid .-= loadings(A)[r] .* Xr
     end
 
     # update covariance
@@ -78,83 +87,94 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
 
     return nothing
 end
-function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNormal, <:AbstractVector})
-    dims = size(y)
-    n = ndims(y) - 1
+function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNormal,
+                                                   <:AbstractVector})
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(cov(ε))
+    C = cholesky.(cov(model))
     # inverse of Cholesky decompositions
     Cinv = inv.(getproperty.(C, :L))
     # precision matrices Ωᵢ
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = outer(A)
+    U = outer.(coef(model))
 
     # scaling
-    S = [[Cinv[i] * U[r][i] for i in 1:n] for r in 1:rank(A)]
+    S = [[[Cinv[i] * U[p][r][i] for i in 1:n] for r in 1:Rp]
+         for (p, Rp) in pairs(rank(model))]
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
-    for r in 1:rank(A)
-        s = setdiff(1:rank(A), r)
-        # dependent variable tensor
-        Zr = copy(y_lead)
-        for i in s
-            Xi = tucker(y_lag, U[i])
-            Zr .-= loadings(A)[i] .* Xi
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            # dependent variable tensor
+            Zpr = copy(y_lead)
+            for (q, Rq) in pairs(rank(model))
+                s = q == p ? setdiff(1:Rq, r) : 1:Rq
+                for i in s
+                    Zpr .-= loadings(model)[q][i] .* tucker(y_lags[q], U[q][i])
+                end
+            end
+            for k in 1:n
+                m = setdiff(1:n, k)
+                # matricize dependent variable along k-th mode
+                Zpr_scaled = tucker(Zpr, Cinv[m], m)
+                Zkpr = matricize(Zpr_scaled, k)
+                # matricize regressor along k-th mode
+                Xpr = tucker(y_lags[p], S[p][r][m], m)
+                Xkpr = matricize(Xpr, k)
+
+                # Gram matrix
+                G = Xkpr * Xkpr'
+                # moment matrix
+                M = Zkpr * Xkpr'
+
+                # update factor k
+                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
+                               G \ M' * Ω[k],
+                               inv(loadings(model)[p][r] *
+                                   dot(factors(model)[p][k + n][:, r], Ω[k],
+                                       factors(model)[p][k + n][:, r])))
+                # update factor k+n
+                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
+                               M,
+                               inv(loadings(model)[p][r] *
+                                   dot(factors(model)[p][k][:, r], G,
+                                       factors(model)[p][k][:, r])))
+
+                # update outer product of Kruskal factors
+                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
+
+                # update covariance
+                Ek = Zkpr - loadings(model)[p][r] .* U[p][r][k] * Xkpr
+                mul!(cov(model)[k].data, Ek, Ek',
+                     inv((last(dims) - lags(model)) * prod(dims[m])), 0.0)
+                # normalize
+                k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
+
+                # update Cholesky decomposition
+                Cinv[k] = inv(cholesky(cov(model)[k]).L)
+
+                # update precision matrix
+                Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+
+                # update scaling
+                S[p][r][k] = Cinv[k] * U[p][r][k]
+            end
+
+            # dependent variable and regressor tensors
+            Zpr_scaled = tucker(Zpr, Cinv)
+            Xpr = tucker(y_lags[p], S[p][r])
+
+            # update loading
+            loadings(model)[p][r] = dot(Zpr_scaled, Xpr) / norm(Xpr)^2
         end
-        for k in 1:n
-            m = setdiff(1:n, k)
-            # matricize dependent variable along k-th mode
-            Zr_scaled = tucker(Zr, Cinv[m], m)
-            Zkr = matricize(Zr_scaled, k)
-            # matricize regressor along k-th mode
-            Xr = tucker(y_lag, S[r][m], m)
-            Xkr = matricize(Xr, k)
-
-            # Gram matrix
-            G = Xkr * Xkr'
-            # moment matrix
-            M = Zkr * Xkr'
-
-            # update factor k
-            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M' * Ω[k],
-                           inv(loadings(A)[r] *
-                               dot(factors(A)[k + n][:, r], Ω[k], factors(A)[k + n][:, r])))
-            # update factor k+n
-            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
-                           inv(loadings(A)[r] *
-                               dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
-
-            # update outer product of Kruskal factors
-            U[r][k] = factors(A)[k + n][:, r] * factors(A)[k][:, r]'
-
-            # update covariance
-            Ek = Zkr - loadings(A)[r] .* U[r][k] * Xkr
-            mul!(cov(ε)[k].data, Ek, Ek', inv((last(dims) - 1) * prod(dims[m])), 0.0)
-            # normalize
-            k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
-
-            # update Cholesky decomposition
-            Cinv[k] = inv(cholesky(cov(ε)[k]).L)
-
-            # update precision matrix
-            Ω[k] = transpose(Cinv)[k] .* Cinv[k]
-
-            # update scaling
-            S[r][k] = Cinv[k] * U[r][k]
-        end
-
-        # dependent variable and regressor tensors
-        Zr_scaled = tucker(Zr, Cinv)
-        Xr = tucker(y_lag, S[r])
-
-        # update loading
-        loadings(A)[r] = dot(Zr_scaled, Xr) / norm(Xr)^2
     end
 
     return nothing
@@ -305,7 +325,8 @@ end
 Update transition dynamics of the dynamic Kruskal tensor of the dynamic tensor autoregresive
 model `model` using smoothed loadings variance `V`, and autocovariance `Γ`.
 """
-function update_transition!(model::DynamicTensorAutoregression, V::AbstractVector, Γ::AbstractVector)
+function update_transition!(model::DynamicTensorAutoregression, V::AbstractVector,
+                            Γ::AbstractVector)
     T = length(V)
 
     # objective closures
