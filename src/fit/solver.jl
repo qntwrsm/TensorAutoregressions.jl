@@ -199,121 +199,135 @@ Update observation equation parameters of the dynamic tensor autoregressive mode
 based on smoothed loading variance `V` and using an alternating least squares (ALS) solve.
 """
 function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVector)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+    R = sum(rank(model))
+    Rc = cumsum(rank(model))
 
     # Cholesky decompositions of Σᵢ
-    C = cholesky.(cov(ε))
+    C = cholesky.(cov(model))
     # inverse of Cholesky decompositions
     Cinv = inv.(getproperty.(C, :L))
     # precision matrices Ωᵢ
     Ω = transpose.(Cinv) .* Cinv
 
     # outer product of Kruskal factors
-    U = outer(A)
+    U = outer.(coef(model))
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
 
     # Cholesky decomposition of V
-    v_half = similar(loadings(A), rank(A) * (rank(A) + 1) ÷ 2, last(dims))
+    v_half = similar(V[1], R * (R + 1) ÷ 2, last(dims) - lags(model))
     for (t, Vt) in pairs(V)
         F = cholesky(Hermitian(Vt))
         offset = 0
-        for r in 1:rank(A)
-            for s in r:rank(A)
-                v_half[offset + s - r + 1, t] .= F.L[s, r]
+        for r in 1:R
+            for s in r:R
+                v_half[offset + s - r + 1, t] = F.L[s, r]
             end
-            offset += rank(A) - r + 1
+            offset += R - r + 1
         end
     end
 
     # Gram matrix scaling
-    scale = loadings(A) .^ 2
-    for t in 1:last(dims), r in 1:rank(A), s in 1:r
-        scale[r, t] += v_half[r + (s - 1) * rank(A), t]^2
+    scale = vcat(loadings(model)...) .^ 2
+    for t in 1:last(dims)
+        for r in 1:R
+            for s in 1:r
+                scale[r, t] += v_half[r + (s - 1) * R, t]^2
+            end
+        end
     end
 
     # initialize regressor tensors
-    X = [tucker(y_lag, U[r]) for r in 1:rank(A)]
+    X = [[tucker(y_lags[p], U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
 
-    for r in 1:rank(A)
-        r_ = setdiff(1:rank(A), r)
-        for k in 1:n
-            m = setdiff(1:n, k)
-            # matricize dependent variable along k-th mode
-            Zr = copy(y_lead)
-            for (t, Zrt) in pairs(eachslice(Zr, dims = n + 1))
-                Zrt .*= loadings(A)[r, t]
-                for s in r_
-                    τ = loadings(A)[r, t] .* loadings(A)[s, t]
-                    for p in 1:min(r, s)
-                        offset = (p - 1) * rank(A)
-                        τ += v_half[r + offset, t] * v_half[s + offset, t]
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            for k in 1:n
+                k_ = setdiff(1:n, k)
+                # matricize dependent variable along k-th mode
+                Zpr = copy(y_lead)
+                for (t, Zprt) in pairs(eachslice(Zpr, dims = n + 1))
+                    Zprt .*= loadings(model)[p][r, t]
+                    for (q, Rq) in pairs(rank(model))
+                        r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
+                        for s in r_
+                            τ = loadings(model)[p][r, t] .* loadings(model)[q][s, t]
+                            for j in 1:min(r, s)
+                                offset = (j - 1) * R
+                                τ += v_half[r + offset, t] * v_half[s + offset, t]
+                            end
+                            Zprt .-= τ .* selectdim(X[q][s], n + 1, t)
+                        end
                     end
-                    Zrt .-= τ .* selectdim(X[s], n + 1, t)
                 end
+                Zpr_scaled = tucker(Zpr, Cinv[k_], k_)
+                Zkpr = matricize(Zpr_scaled, k)
+                # matricize regressor along k-th mode
+                Xpr_scaled = tucker(X[p][r], Cinv[k_])
+                Xkpr = matricize(Xpr_scaled, k)
+
+                # Gram matrix
+                G = zeros(dims[k], dims[k])
+                for (t, Xkprt) in pairs(eachslice(Xkpr, dims = n + 1))
+                    G .+= scale[r, t] .* Xkprt * Xkprt'
+                end
+                # moment matrix
+                M = Zkpr * Xkpr'
+
+                # update factor k
+                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r], G \ M' * Ω[k],
+                            inv(dot(factors(model)[p][k + n][:, r], Ω[k], factors(model)[p][k + n][:, r])))
+                # update factor k+n
+                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r], M,
+                            inv(dot(factors(model)[p][k][:, r], G, factors(model)[p][k][:, r])))
+
+                # update outer product of Kruskal factors
+                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
+                # update regressor tensor
+                X[p][r] = tucker(y_lags[p], U[p][r])
             end
-            Zr_scaled = tucker(Zr, Cinv[m], m)
-            Zkr = matricize(Zr_scaled, k)
-            # matricize regressor along k-th mode
-            Xr_scaled = tucker(X[r], Cinv[m])
-            Xkr = matricize(Xr_scaled, k)
-
-            # Gram matrix
-            G = zeros(dims[k], dims[k])
-            for (t, Xkrt) in pairs(eachslice(Xkr, dims = n + 1))
-                G .+= scale[r, t] .* Xkrt * Xkrt'
-            end
-            # moment matrix
-            M = Zkr * Xkr'
-
-            # update factor k
-            update_factor!(factors(A)[k][:, r], factors(A)[k + n][:, r], G \ M' * Ω[k],
-                           inv(dot(factors(A)[k + n][:, r], Ω[k], factors(A)[k + n][:, r])))
-            # update factor k+n
-            update_factor!(factors(A)[k + n][:, r], factors(A)[k][:, r], M,
-                           inv(dot(factors(A)[k][:, r], G, factors(A)[k][:, r])))
-
-            # update outer product of Kruskal factors
-            U[r][k] = factors(A)[k + n][:, r] * factors(A)[k][:, r]'
-            # update regressor tensor
-            X[r] = tucker(y_lag, U[r])
         end
     end
 
     # error tensor
     E = copy(y_lead)
     for (t, Et) in pairs(eachslice(E, dims = n + 1))
-        for r in 1:rank(A)
-            Et .-= loadings(A)[r, t] .* selectdim(X[r], n + 1, t)
+        for (p, Rp) in pairs(rank(model))
+            for r in 1:Rp
+                Et .-= loadings(model)[p][r, t] .* selectdim(X[p][r], n + 1, t)
+            end
         end
     end
 
     for k in 1:n
-        m = setdiff(1:n, k)
+        k_ = setdiff(1:n, k)
         # matricize error along k-th mode
-        E_scaled = tucker(E, Cinv[m], m)
+        E_scaled = tucker(E, Cinv[k_], k_)
         Ek = matricize(E_scaled, k)
 
         # update covariance
-        mul!(cov(ε)[k].data, Ek, Ek')
+        mul!(cov(model)[k].data, Ek, Ek')
         offset = 0
-        for r in 1:rank(A)
-            Xs = zero(X[r])
-            for s in r:rank(A)
-                Xs .+= v_half[offset + s - r + 1, t] .* X[s]
+        for r in 1:R
+            p = sum(x -> isless(x, r), Rc) + 1
+            Xs = zero(X[p][r])
+            for s in r:R
+                q = sum(x -> isless(x, s), Rc) + 1
+                Xs .+= v_half[offset + s - r + 1, t] .* X[q][s]
             end
-            Xs_scaled = tucker(Xs, Cinv[m])
+            Xs_scaled = tucker(Xs, Cinv[k_])
             Xks = matricize(Xs_scaled, k)
-            mul!(cov(ε)[k].data, Xks, Xks', true, true)
-            offset += rank(A) - r + 1
+            mul!(cov(model)[k].data, Xks, Xks', true, true)
+            offset += R - r + 1
         end
-        lmul!(inv((last(dims) - 1) * prod(dims[m])), cov(ε)[k].data)
+        lmul!(inv((last(dims) - lags(model)) * prod(dims[k_])), cov(model)[k].data)
 
         # normalize
-        k != n && lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+        k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
     end
 
     return nothing
