@@ -112,10 +112,10 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     end
 
     # Kruskal coefficient
-    A = [StaticKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+    A = [StaticKruskal((deepcopy(getproperty(Ap, p)) for p in propertynames(Ap))...)
          for Ap in coef(model)]
 
-    return StaticTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
+    return StaticTensorAutoregression(y, TensorNormal(deepcopy(cov(model))), A)
 end
 function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
@@ -124,7 +124,7 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
 
     # Kruskal coefficient
     λ = simulate.(coef(model), last(dims) + burn, rng)
-    A = [DynamicKruskal((copy(getproperty(Ap, p)) for p in propertynames(Ap))...)
+    A = [DynamicKruskal((deepcopy(getproperty(Ap, p)) for p in propertynames(Ap))...)
          for Ap in coef(model)]
     for (p, Ap) in pairs(A)
         loadings(Ap) .= λ[p][:, (burn + lags(model) + 1):(last(dims) + burn)]
@@ -144,7 +144,8 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
         if t > lags(model)
             # autoregressive component
             for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
-                yt .+= λpr[t] .* tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
+                yt .+= λpr[t - lags(model)] .*
+                       tucker(selectdim(y_burn, n + 1, t - p), U[p][r])
             end
         end
     end
@@ -159,12 +160,13 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
             yt .= selectdim(ε, n + 1, burn + t)
             # autoregressive component
             for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
-                yt .+= λpr[burn + t] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
+                yt .+= λpr[burn + t - lags(model)] .*
+                       tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
         end
     end
 
-    return DynamicTensorAutoregression(y, TensorNormal(copy(cov(model))), A)
+    return DynamicTensorAutoregression(y, TensorNormal(deepcopy(cov(model))), A)
 end
 
 """
