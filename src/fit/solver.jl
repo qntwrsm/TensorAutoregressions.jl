@@ -37,17 +37,17 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
             # dependent variable tensor
             Zpr = copy(y_lead)
             for (q, Rq) in pairs(rank(model))
-                s = q == p ? setdiff(1:Rq, r) : 1:Rq
-                for i in s
-                    Zpr .-= loadings(model)[q][i] .* tucker(y_lags[q], U[q][i])
+                r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
+                for s in r_
+                    Zpr .-= loadings(model)[q][s] .* tucker(y_lags[q], U[q][s])
                 end
             end
             for k in 1:n
-                m = setdiff(1:n, k)
+                k_ = setdiff(1:n, k)
                 # matricize dependent variable along k-th mode
                 Zkpr = matricize(Zpr, k)
                 # matricize regressor along k-th mode
-                Xpr = tucker(y_lags[p], U[p][r][m], m)
+                Xpr = tucker(y_lags[p], U[p][r][k_], k_)
                 Xkpr = matricize(Xpr, k)
 
                 # Gram matrix
@@ -56,18 +56,20 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
                 M = Zkpr * Xkpr'
 
                 # update factor k
-                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
-                               G \ M',
-                               inv(loadings(model)[p][r]))
+                @views update_factor!(factors(model)[p][k][:, r],
+                                      factors(model)[p][k + n][:, r],
+                                      G \ M',
+                                      inv(loadings(model)[p][r]))
                 # update factor k+n
-                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
-                               M,
-                               inv(loadings(model)[p][r] *
-                                   dot(factors(model)[p][k][:, r], G,
-                                       factors(model)[p][k][:, r])))
+                @views update_factor!(factors(model)[p][k + n][:, r],
+                                      factors(model)[p][k][:, r],
+                                      M,
+                                      inv(loadings(model)[p][r] *
+                                          dot(factors(model)[p][k][:, r], G,
+                                              factors(model)[p][k][:, r])))
 
                 # update outer product of Kruskal factors
-                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
+                U[p][r][k] .= factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
             end
 
             # regressor tensor
@@ -136,36 +138,25 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
                 M = Zkpr * Xkpr'
 
                 # update factor k
-                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
-                               G \ M' * Ω[k],
-                               inv(loadings(model)[p][r] *
-                                   dot(factors(model)[p][k + n][:, r], Ω[k],
-                                       factors(model)[p][k + n][:, r])))
+                @views update_factor!(factors(model)[p][k][:, r],
+                                      factors(model)[p][k + n][:, r],
+                                      G \ M' * Ω[k],
+                                      inv(loadings(model)[p][r] *
+                                          dot(factors(model)[p][k + n][:, r], Ω[k],
+                                              factors(model)[p][k + n][:, r])))
                 # update factor k+n
-                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
-                               M,
-                               inv(loadings(model)[p][r] *
-                                   dot(factors(model)[p][k][:, r], G,
-                                       factors(model)[p][k][:, r])))
+                @views update_factor!(factors(model)[p][k + n][:, r],
+                                      factors(model)[p][k][:, r],
+                                      M,
+                                      inv(loadings(model)[p][r] *
+                                          dot(factors(model)[p][k][:, r], G,
+                                              factors(model)[p][k][:, r])))
 
                 # update outer product of Kruskal factors
-                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
-
-                # update covariance
-                Ek = Zkpr - loadings(model)[p][r] .* U[p][r][k] * Xkpr
-                mul!(cov(model)[k].data, Ek, Ek',
-                     inv((last(dims) - lags(model)) * prod(dims[m])), false)
-                # normalize
-                k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
-
-                # update Cholesky decomposition
-                Cinv[k] = inv(cholesky(cov(model)[k]).L)
-
-                # update precision matrix
-                Ω[k] = transpose(Cinv)[k] .* Cinv[k]
+                U[p][r][k] .= factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
 
                 # update scaling
-                S[p][r][k] = Cinv[k] * U[p][r][k]
+                mul!(S[p][r][k], Cinv[k], U[p][r][k])
             end
 
             # dependent variable and regressor tensors
@@ -175,6 +166,28 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
             # update loading
             loadings(model)[p][r] = dot(Zpr_scaled, Xpr) / norm(Xpr)^2
         end
+    end
+
+    # error tensor
+    E = copy(y_lead)
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            E .-= loadings(model)[p][r] .* tucker(y_lags[p], U[p][r])
+        end
+    end
+
+    for k in 1:n
+        k_ = setdiff(1:n, k)
+        # matricize error along k-th mode
+        E_scaled = tucker(E, Cinv[k_], k_)
+        Ek = matricize(E_scaled, k)
+
+        # update covariance
+        mul!(cov(model)[k].data, Ek, Ek',
+             inv((last(dims) - lags(model)) * prod(dims[k_])), false)
+
+        # normalize
+        k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
     end
 
     return nothing
@@ -214,19 +227,23 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
     # outer product of Kruskal factors
     U = outer.(coef(model))
 
+    # scaling
+    S = [[[Cinv[i] * U[p][r][i] for i in 1:n] for r in 1:Rp]
+         for (p, Rp) in pairs(rank(model))]
+
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
     y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
               for p in 1:lags(model)]
 
     # Cholesky decomposition of V
-    v_half = similar(V[1], R * (R + 1) ÷ 2, last(dims) - lags(model))
+    v_half = similar(V[1], R * (R + 1) ÷ 2, length(V))
     for (t, Vt) in pairs(V)
         F = cholesky(Hermitian(Vt))
         offset = 0
         for r in 1:R
             for s in r:R
-                v_half[offset + s - r + 1, t] = F.L[s, r]
+                v_half[s - r + 1 + offset, t] = F.L[s, r]
             end
             offset += R - r + 1
         end
@@ -234,10 +251,12 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
     # Gram matrix scaling
     scale = vcat(loadings(model)...) .^ 2
-    for t in 1:last(dims)
+    for t in 1:(last(dims) - lags(model))
         for r in 1:R
+            offset = 0
             for s in 1:r
-                scale[r, t] += v_half[r + (s - 1) * R, t]^2
+                scale[r, t] += v_half[r + offset, t]^2
+                offset += R - s
             end
         end
     end
@@ -257,9 +276,10 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
                         r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
                         for s in r_
                             τ = loadings(model)[p][r, t] .* loadings(model)[q][s, t]
+                            offset = 0
                             for j in 1:min(r, s)
-                                offset = (j - 1) * R
                                 τ += v_half[r + offset, t] * v_half[s + offset, t]
+                                offset += R - j
                             end
                             Zprt .-= τ .* selectdim(X[q][s], n + 1, t)
                         end
@@ -268,32 +288,37 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
                 Zpr_scaled = tucker(Zpr, Cinv[k_], k_)
                 Zkpr = matricize(Zpr_scaled, k)
                 # matricize regressor along k-th mode
-                Xpr_scaled = tucker(X[p][r], Cinv[k_], k_)
+                Xpr_scaled = tucker(y_lags[p], S[p][r][k_], k_)
                 Xkpr = matricize(Xpr_scaled, k)
 
                 # Gram matrix
                 G = zeros(dims[k], dims[k])
-                for (t, Xkprt) in pairs(eachslice(Xkpr, dims = n + 1))
+                for (t, Xprt) in pairs(eachslice(Xpr_scaled, dims = n + 1))
+                    Xkprt = matricize(Xprt, k)
                     G .+= scale[r, t] .* Xkprt * Xkprt'
                 end
                 # moment matrix
                 M = Zkpr * Xkpr'
 
                 # update factor k
-                update_factor!(factors(model)[p][k][:, r], factors(model)[p][k + n][:, r],
-                               G \ M' * Ω[k],
-                               inv(dot(factors(model)[p][k + n][:, r], Ω[k],
-                                       factors(model)[p][k + n][:, r])))
+                @views update_factor!(factors(model)[p][k][:, r],
+                                      factors(model)[p][k + n][:, r],
+                                      G \ M' * Ω[k],
+                                      inv(dot(factors(model)[p][k + n][:, r], Ω[k],
+                                              factors(model)[p][k + n][:, r])))
                 # update factor k+n
-                update_factor!(factors(model)[p][k + n][:, r], factors(model)[p][k][:, r],
-                               M,
-                               inv(dot(factors(model)[p][k][:, r], G,
-                                       factors(model)[p][k][:, r])))
+                @views update_factor!(factors(model)[p][k + n][:, r],
+                                      factors(model)[p][k][:, r],
+                                      M,
+                                      inv(dot(factors(model)[p][k][:, r], G,
+                                              factors(model)[p][k][:, r])))
 
                 # update outer product of Kruskal factors
-                U[p][r][k] = factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
+                U[p][r][k] .= factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
                 # update regressor tensor
-                X[p][r] = tucker(y_lags[p], U[p][r])
+                X[p][r] .= tucker(y_lags[p], U[p][r])
+                # update scaling
+                mul!(S[p][r][k], Cinv[k], U[p][r][k])
             end
         end
     end
@@ -317,17 +342,21 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
         # update covariance
         mul!(cov(model)[k].data, Ek, Ek')
         offset = 0
-        for r in 1:R
-            p = sum(x -> isless(x, r), Rc) + 1
+        for j in 1:R
+            p = sum(x -> isless(x, j), Rc) + 1
+            r = j - get(Rc, p - 1, 0)
             Xs = zero(X[p][r])
-            for s in r:R
-                q = sum(x -> isless(x, s), Rc) + 1
-                Xs .+= v_half[offset + s - r + 1, t] .* X[q][s]
+            for l in j:R
+                q = sum(x -> isless(x, l), Rc) + 1
+                s = l - get(Rc, q - 1, 0)
+                for (t, Xqst) in pairs(eachslice(X[q][s], dims = n + 1))
+                    Xs .+= v_half[l - j + 1 + offset, t] .* Xqst
+                end
             end
-            Xs_scaled = tucker(Xs, Cinv[k_])
+            Xs_scaled = tucker(Xs, Cinv[k_], k_)
             Xks = matricize(Xs_scaled, k)
             mul!(cov(model)[k].data, Xks, Xks', true, true)
-            offset += R - r + 1
+            offset += R - j + 1
         end
         lmul!(inv((last(dims) - lags(model)) * prod(dims[k_])), cov(model)[k].data)
 
