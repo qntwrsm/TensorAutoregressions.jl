@@ -188,6 +188,9 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
 
         # normalize
         k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
+
+        # update inverse of Cholesky decomposition
+        Cinv[k] .= inv(getproperty(cholesky(cov(model)[k]), :L))
     end
 
     return nothing
@@ -349,8 +352,8 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
             for l in j:R
                 q = sum(x -> isless(x, l), Rc) + 1
                 s = l - get(Rc, q - 1, 0)
-                for (t, Xqst) in pairs(eachslice(X[q][s], dims = n + 1))
-                    Xs .+= v_half[l - j + 1 + offset, t] .* Xqst
+                for (t, Xst) in pairs(eachslice(Xs, dims = n + 1))
+                    Xst .+= v_half[l - j + 1 + offset, t] .* selectdim(X[q][s], n + 1, t)
                 end
             end
             Xs_scaled = tucker(Xs, Cinv[k_], k_)
@@ -362,6 +365,9 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
         # normalize
         k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
+
+        # update inverse of Cholesky decomposition
+        Cinv[k] .= inv(getproperty(cholesky(cov(model)[k]), :L))
     end
 
     return nothing

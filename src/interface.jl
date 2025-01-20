@@ -137,7 +137,7 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
     U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
+    y_burn = similar(data(model), dims[1:n]..., burn)
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
         yt .= selectdim(ε, n + 1, t)
