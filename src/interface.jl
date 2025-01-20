@@ -123,11 +123,11 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
     n = ndims(data(model)) - 1
 
     # Kruskal coefficient
-    λ = simulate.(coef(model), last(dims) + burn, rng)
+    λ = simulate.(coef(model), last(dims) + burn - lags(model), rng)
     A = [DynamicKruskal((deepcopy(getproperty(Ap, p)) for p in propertynames(Ap))...)
          for Ap in coef(model)]
     for (p, Ap) in pairs(A)
-        loadings(Ap) .= λ[p][:, (burn + lags(model) + 1):(last(dims) + burn)]
+        loadings(Ap) .= λ[p][:, (burn + 1):(last(dims) + burn - lags(model))]
     end
 
     # tensor error distribution
@@ -153,16 +153,16 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
     # simulate data
     y = similar(data(model))
     for (t, yt) in pairs(eachslice(y, dims = n + 1))
-        if t <= lags(model)
-            yt .= selectdim(y_burn, n + 1, burn + t)
-        else
-            # errors
-            yt .= selectdim(ε, n + 1, burn + t)
-            # autoregressive component
-            for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
-                yt .+= λpr[burn + t - lags(model)] .*
-                       tucker(selectdim(y, n + 1, t - p), U[p][r])
+        # errors
+        yt .= selectdim(ε, n + 1, burn + t)
+        # autoregressive component
+        for (p, λp) in pairs(λ), (r, λpr) in pairs(eachrow(λp))
+            if t <= p
+                ylag = selectdim(y_burn, n + 1, burn + t - p)
+            else
+                ylag = tucker(selectdim(y, n + 1, t - p), U[p][r])
             end
+            yt .+= λpr[burn - lags(model) + t] .* ylag
         end
     end
 
