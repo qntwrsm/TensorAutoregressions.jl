@@ -199,7 +199,15 @@ function update!(model::DynamicTensorAutoregression)
     # E-step
     # smoother
     (α, V, Γ) = smoother(model)
-    loadings(model) .= hcat(α...)
+    R = sum(rank(model))
+    Rc = cumsum(rank(model))
+    for (t, αt) in pairs(α)
+        for j in 1:R
+            p = sum(x -> isless(x, j), Rc) + 1
+            r = j - get(Rc, p - 1, 0)
+            loadings(model)[p][r, t] = αt[j]
+        end
+    end
 
     # M-step
     update_transition_params!(model, V, Γ)
