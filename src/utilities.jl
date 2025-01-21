@@ -220,7 +220,7 @@ Sample conditional paths from the `model` given simulated `particles` and `noise
 function path_sampler!(paths::AbstractArray, model::DynamicTensorAutoregression,
                        particles::AbstractArray, noise::AbstractArray, conditional::Integer)
     n = ndims(data(model)) - 1
-    R = cumsum(rank(model))
+    Rc = cumsum(rank(model))
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
@@ -239,7 +239,7 @@ function path_sampler!(paths::AbstractArray, model::DynamicTensorAutoregression,
                 end
                 # propagate
                 for r in 1:Rp
-                    i = (p > 1 ? R[p - 1] : 0) + r
+                    i = (p > 1 ? Rc[p - 1] : 0) + r
                     element .+= particles[i, h, s] .* tucker(lag, U[p][r])
                 end
             end
