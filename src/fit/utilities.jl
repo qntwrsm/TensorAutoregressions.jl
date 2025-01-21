@@ -103,7 +103,8 @@ function residuals(model::StaticTensorAutoregression)
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
@@ -124,7 +125,8 @@ function residuals(model::DynamicTensorAutoregression)
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
@@ -203,7 +205,8 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # dependent variable and regressor
     z = reshape(y_lead, :, last(dims) - lags(model))
@@ -228,7 +231,10 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = [cp_als(tensorize(β_star[:, ((p - 1) * prod(dims[1:n]) + 1):(p * prod(dims[1:n]))], (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp) for (p, Rp) in pairs(rank(model))]
+        cp = [cp_als(tensorize(β_star[:,
+                                      ((p - 1) * prod(dims[1:n]) + 1):(p * prod(dims[1:n]))],
+                               (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp)
+              for (p, Rp) in pairs(rank(model))]
     end
     # factors
     if method == :data
@@ -236,7 +242,8 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
             factors(Ap) .= cp[p].fmat
         end
     elseif method == :random
-        for (p, Ap) in pairs(coef(model),) k in 1:n, r in 1:rank(model)[p]
+        for (p, Ap) in pairs(coef(model))
+            k in 1:n, r in 1:rank(model)[p]
             factors(Ap)[k][:, r] .= randn(dims[k])
             factors(Ap)[k][:, r] .*= inv(norm(factors(Ap)[k][:, r]))
             factors(Ap)[k + n][:, r] .= randn(dims[k])
@@ -270,8 +277,10 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         # transition dynamics
         for Ap in coef(model)
             for r in 1:rank(Ap)
-                ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) / (last(dims) - lags(model) - 1)
-                xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) / (last(dims) - lags(model) - 1)
+                ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) /
+                       (last(dims) - lags(model) - 1)
+                xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) /
+                       (last(dims) - lags(model) - 1)
                 # dynamics
                 num = denom = zero(dynamics(Ap).diag[r])
                 for t in 2:(last(dims) - lags(model))
@@ -284,7 +293,8 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
                 # variance
                 cov(Ap).diag[r] = zero(cov(Ap).diag[r])
                 for t in 2:(last(dims) - lags(model))
-                    cov(Ap).diag[r] += loadings(Ap)[r, t] - intercept(Ap)[r] - dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1]
+                    cov(Ap).diag[r] += loadings(Ap)[r, t] - intercept(Ap)[r] -
+                                       dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1]
                 end
                 cov(Ap).diag[r] /= last(dims) - lags(model) - 1
             end
@@ -318,7 +328,8 @@ function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
     # covariance
     if dist(model) isa WhiteNoise
         if method == :data
-            cov(model).data .= cov(reshape(resid, :, 1:(last(dims) - 1)), dims = 2)
+            cov(model).data .= cov(reshape(resid, :, 1:(last(dims) - lags(model))),
+                                   dims = 2)
         elseif method == :random
             N = prod(dims[1:n])
             cov(model).data .= rand(InverseWishart(N + 2, I(N)))
