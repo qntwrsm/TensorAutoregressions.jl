@@ -39,11 +39,11 @@ function loglikelihood(model::StaticTensorAutoregression)
 
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
+    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
     # log determinant component
     for k in 1:n
-        m = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+        k_ = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
     end
     # fit component
     ll -= 0.5 * norm(tucker(residuals(model), Cinv))^2
@@ -69,24 +69,24 @@ function loglikelihood(model::DynamicTensorAutoregression)
     H_low = A_low .* Z_basis
 
     # dependent variable
-    Z = tucker(selectdim(data(model), n + 1, 2:last(dims)), Cinv)
+    y_scaled = tucker(selectdim(data(model), n + 1, (lags(model) + 1):last(dims)), Cinv)
 
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
-    for t in 1:(last(dims) - 1)
+    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
+    for t in 1:(last(dims) - lags(model))
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
         # collapsed component
-        et = M[t] * vec(selectdim(Z, n + 1, t))
+        et = M[t] * vec(selectdim(y_scaled, n + 1, t))
         ll -= 0.5 * norm(et)^2
         # projection component
-        ll += 0.5 * (last(dims) - 1) * logdet(H_low[t])
+        ll += 0.5 * (last(dims) - lags(model)) * logdet(H_low[t])
     end
     # projection component
     for k in 1:n
-        m = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+        k_ = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
     end
 
     return ll
