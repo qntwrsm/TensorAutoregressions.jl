@@ -387,7 +387,7 @@ end
 Update transition dynamics of the dynamic Kruskal tensor of the dynamic tensor autoregresive
 model `model` using smoothed loadings variance `V`, and autocovariance `Γ`.
 """
-function update_transition!(model::DynamicTensorAutoregression, V::AbstractVector,
+function update_transition_params!(model::DynamicTensorAutoregression, V::AbstractVector,
                             Γ::AbstractVector)
     T = length(V)
     Rc = cumsum(rank(model))
