@@ -76,10 +76,10 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
             Xpr = tucker(y_lags[p], U[p][r])
 
             # update loading
-            loadings(A)[p][r] = dot(Zpr, Xpr) / norm(Xpr)^2
+            loadings(model)[p][r] = dot(Zpr, Xpr) / norm(Xpr)^2
 
             # update residuals
-            resid .-= loadings(A)[p][r] .* Xpr
+            resid .-= loadings(model)[p][r] .* Xpr
         end
     end
 
