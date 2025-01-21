@@ -390,45 +390,45 @@ model `model` using smoothed loadings variance `V`, and autocovariance `Γ`.
 function update_transition!(model::DynamicTensorAutoregression, V::AbstractVector,
                             Γ::AbstractVector)
     T = length(V)
+    Rc = cumsum(rank(model))
 
-    # objective closures
-    function f_intercept(x, r)
-        f = zero(x)
-        for t in 2:T
-            f -= 2 * (loadings(A)[r, t] - dynamics(A).diag[r] * loadings(A)[r, t - 1]) * x
+    # update transition dynamics
+    for (p, Ap) in pairs(coef(model))
+        for r in 1:rank(Ap)
+            s = (p > 1 ? Rc[p - 1] : 0) + r
+
+            # update dynamics
+            num = denom = zero(dynamics(Ap).diag[r])
+            αr = intercept(Ap)[r]
+            for t in 2:T
+                num += Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1] -
+                       αr * loadings(Ap)[r, t - 1]
+                denom += V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
+            end
+            dynamics(Ap).diag[r] = num / denom
+
+            # # update intercept
+            intercept(Ap)[r] = zero(intercept(Ap)[r])
+            ϕr = dynamics(Ap).diag[r]
+            for t in 2:T
+                intercept(Ap)[r] += loadings(Ap)[r, t] - ϕr * loadings(Ap)[r, t - 1]
+            end
+            intercept(Ap)[r] /= T - 1
+
+            # update variance
+            cov(Ap).diag[r] = zero(cov(Ap).diag[r])
+            αr = intercept(Ap)[r]
+            for t in 2:T
+                μ2 = V[t][s, s] + loadings(Ap)[r, t]^2
+                μ2_lag = V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
+                μ_cross = Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1]
+                cov(Ap).diag[r] += μ2 - 2 * αr * loadings(Ap)[r, t] +
+                                   2 * ϕr * (αr * loadings(Ap)[r, t - 1] - μ_cross) + αr^2 +
+                                   ϕr^2 * μ2_lag
+            end
+            cov(Ap).diag[r] /= T - 1
         end
-        f = x^2 + f / (T - 1)
-
-        return f
     end
-    function f_dynamics(x, r)
-        scale = one(x) - x^2
-        α = intercept(A)[r]
-        f = zero(x)
-        for t in 2:T
-            f += V[t][r, r] + loadings(A)[r, t]^2 - 2 * α * loadings(A)[r, t]
-            f += 2 *
-                 (α * loadings(A)[r, t - 1] - Γ[t - 1][r, r] -
-                  loadings(A)[r, t] * loadings(A)[r, t - 1]) * x
-            f += (V[t - 1][r, r] + loadings(A)[r, t - 1]^2) * x^2
-        end
-        f = α^2 + f / (T - 1)
-
-        return log(scale) + f * inv(scale)
-    end
-
-    # update dynamics
-    for r in 1:rank(A)
-        objective(x) = f_dynamics(x, r)
-        res = optimize(f_dynamics, 0.0, 1.0)
-        dynamics(A).diag[r] = Optim.minimizer(res)
-    end
-    for r in 1:rank(A)
-        objective(x) = f_intercept(x, r)
-        res = optimize(f_intercept, 0.0, 0.7 * (1 - dynamics(A).diag[r]))
-        intercept(A)[r] = Optim.minimizer(res)
-    end
-    cov(A) .= I - dynamics(A) * dynamics(A)'
 
     return nothing
 end
