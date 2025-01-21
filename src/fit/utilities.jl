@@ -98,43 +98,47 @@ end
 Return the residuals of the tensor autoregressive model `model`.
 """
 function residuals(model::StaticTensorAutoregression)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # update residuals
     ε = copy(y_lead)
-    for r in 1:rank(model)
-        ε .-= loadings(model)[r] .* tucker(y_lag, U[r])
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            ε .-= loadings(model)[p][r] .* tucker(y_lags[p], U[p][r])
+        end
     end
 
     return ε
 end
 function residuals(model::DynamicTensorAutoregression)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p)) for p in 1:lags(model)]
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # regressor tensors
-    X = [tucker(y_lag, U[r]) for r in 1:rank(model)]
+    X = [[tucker(y_lags[p], U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
 
     # update residuals
     ε = copy(y_lead)
     for (t, εt) in pairs(eachslice(ε, dims = n + 1))
-        for r in 1:rank(model)
-            εt .-= loadings(model)[r, t] .* selectdim(X[r], n + 1, t)
+        for (p, Rp) in pairs(rank(model))
+            for r in 1:Rp
+                εt .-= loadings(model)[p][r, t] .* selectdim(X[p][r], n + 1, t)
+            end
         end
     end
 
