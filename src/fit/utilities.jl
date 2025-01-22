@@ -217,7 +217,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         F = hessenberg(x * x')
         M = z * x'
         # gridsearch
-        γ = exp10.(range(0, 4, length = 100))
+        γ = exp10.(range(0, 4, length = 1000))
         β = similar(γ, typeof(M))
         bic = similar(γ)
         for (i, γi) in pairs(γ)
@@ -233,7 +233,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         # CP decomposition
         cp = [cp_als(tensorize(β_star[:,
                                       ((p - 1) * prod(dims[1:n]) + 1):(p * prod(dims[1:n]))],
-                               (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp)
+                               (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp, init = "nvecs")
               for (p, Rp) in pairs(rank(model))]
     end
     # factors
@@ -242,16 +242,15 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
             factors(Ap) .= cp[p].fmat
         end
     elseif method == :random
-        for (p, Ap) in pairs(coef(model))
-            k in 1:n, r in 1:rank(model)[p]
+        for Ap in coef(model), k in 1:n, r in 1:rank(Ap)
             factors(Ap)[k][:, r] .= randn(dims[k])
             factors(Ap)[k][:, r] .*= inv(norm(factors(Ap)[k][:, r]))
             factors(Ap)[k + n][:, r] .= randn(dims[k])
             factors(Ap)[k + n][:, r] .*= inv(norm(factors(Ap)[k + n][:, r]))
         end
     end
-    # loadings
 
+    # loadings
     if all(x -> isa(x, StaticKruskal), coef(model))
         if method == :data
             for (p, Ap) in pairs(coef(model))
