@@ -61,15 +61,12 @@ function loglikelihood(model::DynamicTensorAutoregression)
     (A_low, Z_basis) = collapse(model)
     M = Ref(I) .- Z_basis .* ((A_low .* Z_basis) .\ A_low)
 
+    # full precision matrix
+    Hinv = inv(cov(model, full = true))
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
-    # inverse of Cholesky decompositions
-    Cinv = inv.(getproperty.(C, :L))
     # low dimensional state-covariance matrix
     H_low = A_low .* Z_basis
-
-    # dependent variable
-    y_scaled = tucker(selectdim(data(model), n + 1, (lags(model) + 1):last(dims)), Cinv)
 
     # log-likelihood
     # constant
@@ -78,10 +75,10 @@ function loglikelihood(model::DynamicTensorAutoregression)
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
         # collapsed component
-        et = M[t] * vec(selectdim(y_scaled, n + 1, t))
-        ll -= 0.5 * norm(et)^2
+        et = M[t] * vec(selectdim(data(model), n + 1, t + lags(model)))
+        ll -= 0.5 * dot(et, Hinv, et)
         # projection component
-        ll += 0.5 * (last(dims) - lags(model)) * logdet(H_low[t])
+        ll += 0.5 * logdet(H_low[t])
     end
     # projection component
     for k in 1:n
@@ -292,8 +289,8 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
                 # variance
                 cov(Ap).diag[r] = zero(cov(Ap).diag[r])
                 for t in 2:(last(dims) - lags(model))
-                    cov(Ap).diag[r] += loadings(Ap)[r, t] - intercept(Ap)[r] -
-                                       dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1]
+                    cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
+                                       dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
                 end
                 cov(Ap).diag[r] /= last(dims) - lags(model) - 1
             end
