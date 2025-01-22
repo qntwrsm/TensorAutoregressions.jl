@@ -11,8 +11,7 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Statistics, Random, Distributions, TensorToolbox, Optim
-using CairoMakie, Dates
+using LinearAlgebra, Statistics, Random, Distributions, TensorToolbox, CairoMakie, Dates
 
 using StatsAPI: StatisticalModel
 using StatsAPI: aic, aicc, bic
@@ -30,7 +29,7 @@ export
 
 # interface methods
 ## getters
-      data, coef, dist,   # general
+      data, coef, dist, lags, # general
       residuals, cov, # residuals
       factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
 

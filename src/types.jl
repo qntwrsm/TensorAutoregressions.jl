@@ -72,9 +72,17 @@ rank(A::AbstractKruskal) = A.R
 Base.size(A::AbstractKruskal) = tuple(size.(factors(A), 1)...)
 Base.size(A::DynamicKruskal) = tuple(size.(factors(A), 1)..., size(loadings(A), 2))
 full(A::AbstractKruskal) = tucker(loadings(A) .* I(length(factors(A)), rank(A)), factors(A))
-full(A::DynamicKruskal) = tucker(I(length(factors(A)), rank(A)), factors(A))
+function full(A::DynamicKruskal)
+    n = length(factors(A))
+    U = [[factors(A)[i][:, r] for i in 1:n] for r in 1:rank(A)]
+
+    return [tucker(ones((1 for _ in 1:n)...), U[r]) for r in 1:rank(A)]
+end
 function outer(A::AbstractKruskal)
-    [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n] for r in 1:rank(A)]
+    n = length(factors(A)) ÷ 2
+
+    return [[factors(A)[i + n][:, r] * factors(A)[i][:, r]' for i in 1:n]
+            for r in 1:rank(A)]
 end
 intercept(A::DynamicKruskal) = A.α
 dynamics(A::DynamicKruskal) = A.ϕ
@@ -96,7 +104,7 @@ abstract type AbstractTensorErrorDistribution end
 White noise model of tensor errors with covariance matrix `Σ` of ``vec(ε)``.
 """
 struct WhiteNoise{TΣ <: Symmetric} <: AbstractTensorErrorDistribution
-    Σ::Symmetric
+    Σ::TΣ
 end
 
 """
@@ -143,17 +151,17 @@ abstract type AbstractTensorAutoregression <: StatisticalModel end
     StaticTensorAutoregression <: AbstractTensorAutoregression
 
 Tensor autoregressive model with tensor error distribution `ε` and static Kruskal tensor
-representation `A`.
+representations `A`.
 """
 struct StaticTensorAutoregression{Ty <: AbstractArray,
                                   Tε <: AbstractTensorErrorDistribution,
-                                  TA <: StaticKruskal} <: AbstractTensorAutoregression
+                                  TA <: AbstractVector} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     function StaticTensorAutoregression(y::AbstractArray,
                                         ε::AbstractTensorErrorDistribution,
-                                        A::StaticKruskal)
+                                        A::AbstractVector)
         dims = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
@@ -163,8 +171,13 @@ struct StaticTensorAutoregression{Ty <: AbstractArray,
             all(dims[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
-        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
-            throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        for (p, Ap) in enumerate(A)
+            Ap isa StaticKruskal ||
+                throw(ArgumentError("only static Kruskal tensors allowed."))
+            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+                throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
+                                        "must equal number of columns of y."))
+        end
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
@@ -174,17 +187,17 @@ end
     DynamicTensorAutoregression <: AbstractTensorAutoregression
 
 Tensor autoregressive model with tensor error distribution `ε` and dynamic Kruskal tensor
-representation `A`.
+representations `A`.
 """
 struct DynamicTensorAutoregression{Ty <: AbstractArray,
                                    Tε <: AbstractTensorErrorDistribution,
-                                   TA <: DynamicKruskal} <: AbstractTensorAutoregression
+                                   TA <: AbstractVector} <: AbstractTensorAutoregression
     y::Ty
     ε::Tε
     A::TA
     function DynamicTensorAutoregression(y::AbstractArray,
                                          ε::AbstractTensorErrorDistribution,
-                                         A::DynamicKruskal)
+                                         A::AbstractVector)
         dims = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
@@ -193,8 +206,13 @@ struct DynamicTensorAutoregression{Ty <: AbstractArray,
             all(dims[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
-        all((dims[1:n]..., dims[1:n]...) .== size.(factors(A), 1)) ||
-            throw(DimensionMismatch("dimensions of loadings must equal number of columns of y."))
+        for (p, Ap) in enumerate(A)
+            Ap isa DynamicKruskal ||
+                throw(ArgumentError("only dynamic Kruskal tensors allowed."))
+            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+                throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
+                                        "must equal number of columns of y."))
+        end
 
         return new{typeof(y), typeof(ε), typeof(A)}(y, ε, A)
     end
@@ -205,53 +223,50 @@ data(model::AbstractTensorAutoregression) = model.y
 coef(model::AbstractTensorAutoregression) = model.A
 dist(model::AbstractTensorAutoregression) = model.ε
 cov(model::AbstractTensorAutoregression; full::Bool = false) = cov(dist(model), full = full)
-factors(model::AbstractTensorAutoregression) = factors(coef(model))
-loadings(model::AbstractTensorAutoregression) = loadings(coef(model))
-rank(model::AbstractTensorAutoregression) = rank(coef(model))
+factors(model::AbstractTensorAutoregression) = factors.(coef(model))
+loadings(model::AbstractTensorAutoregression) = loadings.(coef(model))
+rank(model::AbstractTensorAutoregression) = rank.(coef(model))
+lags(model::AbstractTensorAutoregression) = length(coef(model))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
-dof(model::AbstractTensorAutoregression) = dof(coef(model)) + dof(dist(model))
+dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
 
 # Impulse response functions
 """
     AbstractIRF
 
-Abstract type for impulse response functions (IRFs).
+Abstract type for (generalized) impulse response functions (IRFs).
 """
 abstract type AbstractIRF end
 
 """
     StaticIRF <: AbstractIRF
 
-Static impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
-the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
-is orthogonalized.
+Static (generalized) impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and
+`upper` as the lower and upper bounds of the ``α``% confidence interval, and `orth` as
+whether the IRF is orthogonalized.
 """
 struct StaticIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
-    orth::Bool
-    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray,
-                       orth::Bool)
-        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    function StaticIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray)
+        return new{typeof(Ψ)}(Ψ, lower, upper)
     end
 end
 
 """
     DynamicIRF <: AbstractIRF
 
-Dynamic impulse response function (IRF) with `Ψ` as the IRF matrix, `lower` and `upper` as
-the lower and upper bounds of the ``α``% confidence interval, and `orth` as whether the IRF
-is orthogonalized.
+Dynamic (generalized) impulse response function (IRF) with `Ψ` as the IRF matrix, `lower`
+and `upper` as the lower and upper bounds of the ``α``% confidence interval, and `orth` as
+whether the IRF is orthogonalized.
 """
 struct DynamicIRF{TΨ <: AbstractArray} <: AbstractIRF
     Ψ::TΨ
     lower::TΨ
     upper::TΨ
-    orth::Bool
-    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray,
-                        orth::Bool)
-        return new{typeof(Ψ)}(Ψ, lower, upper, orth)
+    function DynamicIRF(Ψ::AbstractArray, lower::AbstractArray, upper::AbstractArray)
+        return new{typeof(Ψ)}(Ψ, lower, upper)
     end
 end
 
@@ -278,4 +293,3 @@ end
 function upper(irfs::DynamicIRF, impulse, response, time)
     @view upper(irfs)[impulse..., response..., :, time]
 end
-orth(irfs::AbstractIRF) = irfs.orth

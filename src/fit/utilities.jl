@@ -39,11 +39,11 @@ function loglikelihood(model::StaticTensorAutoregression)
 
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
+    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
     # log determinant component
     for k in 1:n
-        m = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+        k_ = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
     end
     # fit component
     ll -= 0.5 * norm(tucker(residuals(model), Cinv))^2
@@ -61,32 +61,29 @@ function loglikelihood(model::DynamicTensorAutoregression)
     (A_low, Z_basis) = collapse(model)
     M = Ref(I) .- Z_basis .* ((A_low .* Z_basis) .\ A_low)
 
+    # full precision matrix
+    Hinv = inv(cov(model, full = true))
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
-    # inverse of Cholesky decompositions
-    Cinv = inv.(getproperty.(C, :L))
     # low dimensional state-covariance matrix
     H_low = A_low .* Z_basis
 
-    # dependent variable
-    Z = tucker(selectdim(data(model), n + 1, 2:last(dims)), Cinv)
-
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - 1) * prod(dims[1:n]) * log(2π)
-    for t in 1:(last(dims) - 1)
+    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
+    for t in 1:(last(dims) - lags(model))
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
         # collapsed component
-        et = M[t] * vec(selectdim(Z, n + 1, t))
-        ll -= 0.5 * norm(et)^2
+        et = M[t] * vec(selectdim(data(model), n + 1, t + lags(model)))
+        ll -= 0.5 * dot(et, Hinv, et)
         # projection component
-        ll += 0.5 * (last(dims) - 1) * logdet(H_low[t])
+        ll += 0.5 * logdet(H_low[t])
     end
     # projection component
     for k in 1:n
-        m = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - 1) * prod(dims[m]) * logdet(C[k])
+        k_ = setdiff(1:n, k)
+        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
     end
 
     return ll
@@ -98,43 +95,49 @@ end
 Return the residuals of the tensor autoregressive model `model`.
 """
 function residuals(model::StaticTensorAutoregression)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # update residuals
     ε = copy(y_lead)
-    for r in 1:rank(model)
-        ε .-= loadings(model)[r] .* tucker(y_lag, U[r])
+    for (p, Rp) in pairs(rank(model))
+        for r in 1:Rp
+            ε .-= loadings(model)[p][r] .* tucker(y_lags[p], U[p][r])
+        end
     end
 
     return ε
 end
 function residuals(model::DynamicTensorAutoregression)
-    dims = size(y)
-    n = ndims(y) - 1
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # outer product of Kruskal factors
-    U = outer(coef(model))
+    U = outer.(coef(model))
 
     # regressor tensors
-    X = [tucker(y_lag, U[r]) for r in 1:rank(model)]
+    X = [[tucker(y_lags[p], U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
 
     # update residuals
     ε = copy(y_lead)
     for (t, εt) in pairs(eachslice(ε, dims = n + 1))
-        for r in 1:rank(model)
-            εt .-= loadings(model)[r, t] .* selectdim(X[r], n + 1, t)
+        for (p, Rp) in pairs(rank(model))
+            for r in 1:Rp
+                εt .-= loadings(model)[p][r, t] .* selectdim(X[p][r], n + 1, t)
+            end
         end
     end
 
@@ -168,17 +171,18 @@ been initialized manually before fitting.
 """
 function init!(model::AbstractTensorAutoregression, method::NamedTuple)
     # initialize Kruskal coefficient tensor
-    method.coef != :none && init!(coef(model), data(model), method.coef)
+    method.coef != :none && init_kruskal!(model, method.coef)
     # initialize tensor error distribution
-    method.dist != :none && init!(dist(model), data(model), coef(model), method.dist)
+    method.dist != :none && init_dist!(model, method.dist)
 
     return nothing
 end
 
 """
-    init!(A, y, method)
+    init_kruskal!(model, method)
 
-Initialize the Kruskal coefficient tensor `A` given the data `y` using `method`.
+Initialize the Kruskal coefficient tensors of the tensor autoregressive model `model` using
+`method`.
 
 When `method` is set to `:data`:
 Initialization of the Kruskal coefficient tensor is based on ridge regression of the
@@ -191,90 +195,116 @@ decomposition.
 In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the factor
 model representation of the model.
 """
-function init!(A::AbstractKruskal, y::AbstractArray, method::Symbol)
-    dims = size(y)
-    n = ndims(y) - 1
+function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
+    Rc = cumsum(rank(model))
 
     # lag and lead variables
-    y_lead = selectdim(y, n + 1, 2:last(dims))
-    y_lag = selectdim(y, n + 1, 1:(last(dims) - 1))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+              for p in 1:lags(model)]
 
     # dependent variable and regressor
-    z = reshape(y_lead, :, last(dims) - 1)
-    x = reshape(y_lag, :, last(dims) - 1)
+    z = reshape(y_lead, :, last(dims) - lags(model))
+    x = vcat(reshape.(y_lags, :, last(dims) - lags(model))...)
 
     if method == :data
         # ridge regression
         F = hessenberg(x * x')
         M = z * x'
         # gridsearch
-        γ = exp10.(range(0, 4, length = 100))
+        γ = exp10.(range(0, 4, length = 1000))
         β = similar(γ, typeof(M))
         bic = similar(γ)
         for (i, γi) in pairs(γ)
             β[i] = M / (F + γi * I)
             rss = norm(z - β[i] * x)^2
             df = tr(x' / (F + γi * I) * x)
-            bic[i] = (last(dims) - 1) * log(rss * inv(last(dims) - 1)) +
-                     df * log(last(dims) - 1)
+            bic[i] = (last(dims) - lags(model)) * log(rss * inv(last(dims) - lags(model))) +
+                     df * log(last(dims) - lags(model))
         end
         # optimal
         β_star = β[argmin(bic)]
 
         # CP decomposition
-        cp = cp_als(tensorize(β_star, (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), rank(A))
+        cp = [cp_als(tensorize(β_star[:,
+                                      ((p - 1) * prod(dims[1:n]) + 1):(p * prod(dims[1:n]))],
+                               (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp, init = "nvecs")
+              for (p, Rp) in pairs(rank(model))]
     end
     # factors
     if method == :data
-        factors(A) .= cp.fmat
+        for (p, Ap) in pairs(coef(model))
+            factors(Ap) .= cp[p].fmat
+        end
     elseif method == :random
-        for k in 1:n, r in 1:rank(A)
-            factors(A)[k][:, r] .= randn(dims[k])
-            factors(A)[k][:, r] .*= inv(norm(factors(A)[k][:, r]))
-            factors(A)[k + n][:, r] .= randn(dims[k])
-            factors(A)[k + n][:, r] .*= inv(norm(factors(A)[k + n][:, r]))
+        for Ap in coef(model), k in 1:n, r in 1:rank(Ap)
+            factors(Ap)[k][:, r] .= randn(dims[k])
+            factors(Ap)[k][:, r] .*= inv(norm(factors(Ap)[k][:, r]))
+            factors(Ap)[k + n][:, r] .= randn(dims[k])
+            factors(Ap)[k + n][:, r] .*= inv(norm(factors(Ap)[k + n][:, r]))
         end
     end
+
     # loadings
-    if A isa StaticKruskal
+    if all(x -> isa(x, StaticKruskal), coef(model))
         if method == :data
-            loadings(A) .= cp.lambda
+            for (p, Ap) in pairs(coef(model))
+                loadings(Ap) .= cp[p].lambda
+            end
         elseif method == :random
-            loadings(A) .= rand(rank(A))
+            for Ap in coef(model)
+                loadings(Ap) .= rand(rank(Ap))
+            end
         end
     else
         # outer product of Kruskal factors
-        U = outer(A)
-        xt = similar(x, size(x, 1), rank(A))
-        for t in 1:(last(dims) - 1)
-            # select time series
-            yt = selectdim(y, n + 1, t)
-            # regressors
-            for r in 1:rank(A)
-                xt[:, r] = vec(tucker(yt, U[r]))
+        L = loading_matrix(model)
+        for (t, Lt) in pairs(L)
+            λt = Lt \ view(z, :, t)
+            for (j, λjt) in pairs(λt)
+                p = sum(x -> isless(x, j), Rc) + 1
+                r = j - get(Rc, p - 1, 0)
+                loadings(model)[p][r, t] = λjt
             end
-            loadings(A)[:, t] = xt \ z[:, t]
         end
 
-        # dynamics
-        λ_lead = @view loadings(A)[:, 2:end]
-        λ_lag = @view loadings(A)[:, 1:(end - 1)]
-        β = hcat.(Ref(ones(last(dims) - 2)), eachrow(λ_lag)) .\ eachrow(λ_lead)
-        for (r, βr) in enumerate(β)
-            intercept(A)[r] = βr[1]
-            dynamics(A).diag[r] = βr[2]
+        # transition dynamics
+        for Ap in coef(model)
+            for r in 1:rank(Ap)
+                ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) /
+                       (last(dims) - lags(model) - 1)
+                xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) /
+                       (last(dims) - lags(model) - 1)
+                # dynamics
+                num = denom = zero(dynamics(Ap).diag[r])
+                for t in 2:(last(dims) - lags(model))
+                    num += (loadings(Ap)[r, t] - ybar) * (loadings(Ap)[r, t - 1] - xbar)
+                    denom += (loadings(Ap)[r, t - 1] - xbar)^2
+                end
+                dynamics(Ap).diag[r] = num / denom
+                # intercept
+                intercept(Ap)[r] = ybar - dynamics(Ap).diag[r] * xbar
+                # variance
+                cov(Ap).diag[r] = zero(cov(Ap).diag[r])
+                for t in 2:(last(dims) - lags(model))
+                    cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
+                                       dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
+                end
+                cov(Ap).diag[r] /= last(dims) - lags(model) - 1
+            end
         end
-        cov(A) .= I - dynamics(A) * dynamics(A)'
     end
 
     return nothing
 end
 
 """
-    init!(ε, y, A, method)
+    init_dist!(model, method)
 
-Initialize the tensor error distribution `ε` given the data `y` and the Kruskal coefficent
-tensor `A` using `method`.
+Initialize the tensor error distribution of the tensor autoregressive model `model` using
+`method`.
 
 When `method` is set to `:data`:
 Initiliazation of the tensor error distribution is based on the sample covariance estimate
@@ -285,34 +315,34 @@ When `method` is set to `:random`:
 Initialization of the tensor error distribution is based on a randomly sampled covariance
 matrix from an inverse Wishart distribution.
 """
-function init!(ε::AbstractTensorErrorDistribution, y::AbstractArray, A::AbstractKruskal,
-               method::Symbol)
-    dims = size(y)
-    n = ndims(y) - 1
+function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
+    dims = size(data(model))
+    n = ndims(data(model)) - 1
 
     # error distribution
     resid = residuals(model)
     # covariance
-    if ε isa WhiteNoise
+    if dist(model) isa WhiteNoise
         if method == :data
-            cov(ε).data .= cov(reshape(resid, :, 1:(last(dims) - 1)), dims = 2)
+            cov(model).data .= cov(reshape(resid, :, 1:(last(dims) - lags(model))),
+                                   dims = 2)
         elseif method == :random
-            p = prod(dims[1:n])
-            cov(ε).data .= rand(InverseWishart(p + 2, I(p)))
+            N = prod(dims[1:n])
+            cov(model).data .= rand(InverseWishart(N + 2, I(N)))
         end
     else
-        scale = one(eltype(resid(ε)))
+        scale = one(eltype(resid))
         for k in 1:n
             if method == :data
-                cov(ε)[k].data .= cov(matricize(resid, k), dims = 2)
+                cov(model)[k].data .= cov(matricize(resid, k), dims = 2)
             elseif method == :random
-                cov(ε)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
+                cov(model)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
             end
             if k < n
-                scale *= norm(cov(ε)[k])
-                lmul!(inv(norm(cov(ε)[k])), cov(ε)[k].data)
+                scale *= norm(cov(model)[k])
+                lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
             else
-                lmul!(scale, cov(ε)[k].data)
+                lmul!(scale, cov(model)[k].data)
             end
         end
     end

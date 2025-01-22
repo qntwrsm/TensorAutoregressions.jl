@@ -10,6 +10,8 @@ plotting.jl
 @date: 2023/04/04
 =#
 
+#TODO Check code for all plot methods and whether still correct for general lag P rank Rp structure
+
 """
     data_plot(model[, labels, time]) -> fig
 
