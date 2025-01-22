@@ -19,6 +19,7 @@ Compute Monte Carlo `α`% confidence bounds for impulse response functions of th
 autoregressive model given by `model`. The confidence bounds are estimated using a Monte
 Carlo simulation with `samples` and a burn-in period `burn`.
 """
+#TODO Adjust confidence bounds calculation of IRFs of static model to accomodate generalized IRFs
 function confidence_bounds(model::StaticTensorAutoregression, periods::Integer, α::Real,
                            orth::Bool, samples::Integer = 100, burn::Integer = 100,
                            rng::AbstractRNG = Xoshiro())
