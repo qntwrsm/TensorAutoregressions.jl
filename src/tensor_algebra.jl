@@ -63,3 +63,64 @@ function (I::UniformScaling)(n::Integer, R::Integer)
 
     return Id
 end
+
+"""
+    cp(X, R; tolerance = 1e-4, max_iter = 1000) -> Xhat
+
+Rank `R` CP-decomposition of a tensor `X` obtained using alternating least squares using a
+tolerance of `tolerance` and maximum number of iterations of `max_iter`.
+"""
+function cp(X::AbstractArray, R::Integer; tolerance::AbstractFloat = 1e-4,
+            max_iter::Integer = 1000)
+    # initialization
+    U = [let Ui = randn(Ii, R)
+             Ui ./ norm.(eachcol(Ui))'
+         end
+         for Ii in size(X)]
+    Xhat = StaticKruskal(randn(R), U, R)
+
+    # inner product
+    UtU = transpose.(factors(Xhat)) .* factors(Xhat)
+
+    # alternating least squares
+    iter = 0
+    obj = -Inf
+    converged = false
+    while !converged && iter < max_iter
+        # update Kruskal factors and loadings
+        for (k, Uk) in pairs(factors(Xhat))
+            k_ = setdiff(1:ndims(X), k)
+            V = ones(eltype(X), R, R)
+            for j in k_
+                V .*= UtU[j]
+            end
+            Xk = matricize(X, k)
+            Z = factors(Xhat)[k_[end]]
+            for j in Iterators.drop(Iterators.reverse(k_), 1)
+                Z = hcat(kron.(eachcol(Z), eachcol(factors(Xhat)[j]))...)
+            end
+            Uk .= Xk * Z / V
+
+            # normalize
+            loadings(Xhat) .= norm.(eachcol(Uk))
+            Uk ./= loadings(Xhat)'
+
+            # update inner product
+            UtU[k] = Uk' * Uk
+        end
+
+        # update objective function
+        obj_prev = obj
+        residual = X .- full(Xhat)
+        obj = 1.0 - norm(residual) / norm(X)
+
+        # convergence
+        δ = abs(obj - obj_prev)
+        converged = δ < tolerance
+
+        # update iteration counter
+        iter += 1
+    end
+
+    return Xhat
+end

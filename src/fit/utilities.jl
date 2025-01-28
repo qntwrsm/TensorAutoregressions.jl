@@ -198,6 +198,8 @@ model representation of the model.
 function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     dims = size(data(model))
     n = ndims(data(model)) - 1
+    N = prod(dims[1:n])
+    kruskal_shape = (dims[1:n]..., dims[1:n]...)
     Rc = cumsum(rank(model))
 
     # lag and lead variables
@@ -214,7 +216,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         F = hessenberg(x * x')
         M = z * x'
         # gridsearch
-        γ = exp10.(range(0, 4, length = 1000))
+        γ = exp10.(range(0, 3, length = 100))
         β = similar(γ, typeof(M))
         bic = similar(γ)
         for (i, γi) in pairs(γ)
@@ -226,17 +228,16 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         end
         # optimal
         β_star = β[argmin(bic)]
+        B = [tensorize(β_star[:, ((p - 1) * N + 1):(p * N)], (n + 1):(2n), kruskal_shape)
+             for p in 1:lags(model)]
 
         # CP decomposition
-        cp = [cp_als(tensorize(β_star[:,
-                                      ((p - 1) * prod(dims[1:n]) + 1):(p * prod(dims[1:n]))],
-                               (n + 1):(2n), (dims[1:n]..., dims[1:n]...)), Rp, init = "nvecs")
-              for (p, Rp) in pairs(rank(model))]
+        Astatic = [cp(B[p], Rp) for (p, Rp) in pairs(rank(model))]
     end
     # factors
     if method == :data
         for (p, Ap) in pairs(coef(model))
-            factors(Ap) .= cp[p].fmat
+            factors(Ap) .= factors(Astatic[p])
         end
     elseif method == :random
         for Ap in coef(model), k in 1:n, r in 1:rank(Ap)
@@ -251,11 +252,11 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     if all(x -> isa(x, StaticKruskal), coef(model))
         if method == :data
             for (p, Ap) in pairs(coef(model))
-                loadings(Ap) .= cp[p].lambda
+                loadings(Ap) .= loadings(Astatic[p])
             end
         elseif method == :random
             for Ap in coef(model)
-                loadings(Ap) .= rand(rank(Ap))
+                loadings(Ap) .= randn(rank(Ap))
             end
         end
     else
@@ -290,7 +291,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
                 cov(Ap).diag[r] = zero(cov(Ap).diag[r])
                 for t in 2:(last(dims) - lags(model))
                     cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
-                                       dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
+                                        dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
                 end
                 cov(Ap).diag[r] /= last(dims) - lags(model) - 1
             end
