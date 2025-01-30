@@ -358,36 +358,6 @@ function loading_matrix(model::DynamicTensorAutoregression)
 end
 
 """
-    scaled_loading_matrix(model) -> L
-
-High-dimensional scaled loading matrix for the state space form of the dynamic
-tensor autoregressive model `model`.
-"""
-function scaled_loading_matrix(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
-    # precision matrices
-    Ω = inv.(cov(model))
-
-    # outer product of Kruskal factors
-    U = outer.(coef(model))
-
-    # scaling
-    S = [[[Ω[i] * U[p][r][i] for i in 1:n] for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
-
-    # high-dimensional scaled time-varying loading matrix
-    L_unstacked = stack([[stack([vec(tucker(yt, S[p][r])) for r in 1:Rp])
-                          for yt in Iterators.drop(Iterators.take(eachslice(data(model),
-                                                                            dims = n + 1),
-                                                                  last(dims) - p),
-                                                   lags(model) - p)]
-                         for (p, Rp) in pairs(rank(model))])
-
-    return broadcast(splat(hcat), eachrow(L_unstacked))
-end
-
-"""
     collapse(model) -> (A_low, Z_basis)
 
 Low-dimensional collapsing matrices for the dynamic tensor autoregressive model `model`
@@ -400,16 +370,16 @@ function collapse(model::DynamicTensorAutoregression)
     # precision matrices
     Ω = inv.(cov(model))
 
-    # high-dimensional (scaled) time-varying loading matrix
+    # high-dimensional time-varying loading matrix
     Z = loading_matrix(model)
-    Z_scaled = scaled_loading_matrix(model)
-    C = transpose.(Z) .* Z_scaled
+    # linearly independent columns
+    F = qr.(Z)
+    ic = [broadcast(!iszero, eachcol(Ft.R)) for Ft in F]
 
     # collapsing matrices
-    Z_basis = transpose.(C .\ transpose.(Z))
-    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n),
-                                          Ref((dims[1:n]..., sum(rank(model))))), Ref(Ω)),
-                       n + 1)
+    Z_basis = [Zt[:, ic[t]] for (t, Zt) in pairs(Z)]
+    reduced_dims = [(dims[1:n]..., sum(ict)) for ict in ic]
+    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n), reduced_dims), Ref(Ω)), n + 1)
 
     return (A_low, Z_basis)
 end
@@ -472,7 +442,7 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
         F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
-        K[t] = T * P[t] * Z[t]' / F[t]
+        K[t] = T * P[t] * (qr(F[t], ColumnNorm()) \ Z[t])'
 
         # prediction
         if predict || t < length(y)
@@ -497,6 +467,8 @@ function smoother(model::DynamicTensorAutoregression)
 
     # filter
     (a, P, v, F, K) = filter(model)
+    # pivoted QR decomposition
+    fac = qr.(F, Ref(ColumnNorm()))
 
     # initialize smoother output
     α = similar(a)
@@ -513,8 +485,8 @@ function smoother(model::DynamicTensorAutoregression)
         L .= T - K[t] * Z[t]
 
         # backward recursion
-        r .= Z[t]' / F[t] * v[t] + L' * r
-        N .= Z[t]' / F[t] * Z[t] + L' * N * L
+        r .= (fac[t] \ Z[t])' * v[t] + L' * r
+        N .= (fac[t] \ Z[t])' * Z[t] + L' * N * L
 
         # smoothing
         α[t] = a[t] + P[t] * r

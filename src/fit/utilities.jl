@@ -56,10 +56,12 @@ function loglikelihood(model::DynamicTensorAutoregression)
 
     # filter
     (_, _, v, F, _) = filter(model)
+    # pivoted QR decomposition
+    fac = qr.(F, Ref(ColumnNorm()))
 
     # annihilator matrix
     (A_low, Z_basis) = collapse(model)
-    M = Ref(I) .- Z_basis .* ((A_low .* Z_basis) .\ A_low)
+    M = Ref(I) .- Z_basis .* (qr.(A_low .* Z_basis, Ref(ColumnNorm())) .\ A_low)
 
     # full precision matrix
     Hinv = inv(cov(model, full = true))
@@ -73,7 +75,7 @@ function loglikelihood(model::DynamicTensorAutoregression)
     ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
     for t in 1:(last(dims) - lags(model))
         # filter component
-        ll -= 0.5 * (logdet(F[t]) + dot(v[t], inv(F[t]), v[t]))
+        ll -= 0.5 * (logdet(F[t]) + dot(v[t], fac[t] \ v[t]))
         # collapsed component
         et = M[t] * vec(selectdim(data(model), n + 1, t + lags(model)))
         ll -= 0.5 * dot(et, Hinv, et)
