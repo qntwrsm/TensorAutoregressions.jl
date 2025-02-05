@@ -410,23 +410,21 @@ function update_transition_params!(model::DynamicTensorAutoregression, V::Abstra
             # # update intercept
             intercept(Ap)[r] = zero(intercept(Ap)[r])
             ϕr = dynamics(Ap).diag[r]
-            for t in 2:T
-                intercept(Ap)[r] += loadings(Ap)[r, t] - ϕr * loadings(Ap)[r, t - 1]
-            end
-            intercept(Ap)[r] /= T - 1
+            # for t in 2:T
+            #     intercept(Ap)[r] += loadings(Ap)[r, t] - ϕr * loadings(Ap)[r, t - 1]
+            # end
+            # intercept(Ap)[r] /= T - 1
 
             # update variance
-            cov(Ap).diag[r] = zero(cov(Ap).diag[r])
             αr = intercept(Ap)[r]
+            e = 0.0
             for t in 2:T
                 μ2 = V[t][s, s] + loadings(Ap)[r, t]^2
                 μ2_lag = V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
                 μ_cross = Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1]
-                cov(Ap).diag[r] += μ2 - 2 * αr * loadings(Ap)[r, t] +
-                                   2 * ϕr * (αr * loadings(Ap)[r, t - 1] - μ_cross) + αr^2 +
-                                   ϕr^2 * μ2_lag
+                e += μ2 - 2.0 * αr * loadings(Ap)[r, t] + 2.0 * ϕr * (αr * loadings(Ap)[r, t - 1] - μ_cross) + αr^2 + ϕr^2 * μ2_lag
             end
-            cov(Ap).diag[r] /= T - 1
+            cov(Ap).diag[r] = e / (T - 1)
         end
     end
 

@@ -276,26 +276,29 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         # transition dynamics
         for Ap in coef(model)
             for r in 1:rank(Ap)
-                ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) /
-                       (last(dims) - lags(model) - 1)
-                xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) /
-                       (last(dims) - lags(model) - 1)
-                # dynamics
-                num = denom = zero(dynamics(Ap).diag[r])
-                for t in 2:(last(dims) - lags(model))
-                    num += (loadings(Ap)[r, t] - ybar) * (loadings(Ap)[r, t - 1] - xbar)
-                    denom += (loadings(Ap)[r, t - 1] - xbar)^2
-                end
-                dynamics(Ap).diag[r] = num / denom
+                # ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) /
+                #        (last(dims) - lags(model) - 1)
+                # xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) /
+                #        (last(dims) - lags(model) - 1)
+                # # dynamics
+                # num = denom = zero(dynamics(Ap).diag[r])
+                # for t in 2:(last(dims) - lags(model))
+                #     num += (loadings(Ap)[r, t] - ybar) * (loadings(Ap)[r, t - 1] - xbar)
+                #     denom += (loadings(Ap)[r, t - 1] - xbar)^2
+                # end
+                # dynamics(Ap).diag[r] = num / denom
+                dynamics(Ap).diag[r] = 0.5
                 # intercept
-                intercept(Ap)[r] = ybar - dynamics(Ap).diag[r] * xbar
+                # intercept(Ap)[r] = ybar - dynamics(Ap).diag[r] * xbar
+                intercept(Ap)[r] = 0.0
                 # variance
-                cov(Ap).diag[r] = zero(cov(Ap).diag[r])
-                for t in 2:(last(dims) - lags(model))
-                    cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
-                                        dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
-                end
-                cov(Ap).diag[r] /= last(dims) - lags(model) - 1
+                # cov(Ap).diag[r] = zero(cov(Ap).diag[r])
+                # for t in 2:(last(dims) - lags(model))
+                #     cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
+                #                         dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
+                # end
+                # cov(Ap).diag[r] /= last(dims) - lags(model) - 1
+                cov(Ap).diag[r] = 1.0
             end
         end
     end
