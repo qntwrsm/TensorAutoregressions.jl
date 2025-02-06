@@ -298,7 +298,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
                 #                         dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
                 # end
                 # cov(Ap).diag[r] /= last(dims) - lags(model) - 1
-                cov(Ap).diag[r] = rand() + 0.5
+                cov(Ap).diag[r] = 1.0
             end
         end
     end
