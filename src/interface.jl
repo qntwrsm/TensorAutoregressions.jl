@@ -222,14 +222,14 @@ function fit!(model::AbstractTensorAutoregression;
         obj = objective(model)
 
         # non-decrease violation
-        # if obj - obj_prev < 0
-        #     violation = true
-        #     if verbose
-        #         println("Objective function value decreased from $iter to $(iter + 1).")
-        #         println()
-        #     end
-        #     break
-        # end
+        if obj - obj_prev < 0
+            violation = true
+            if verbose
+                println("Objective function value decreased from $iter to $(iter + 1).")
+                println()
+            end
+            break
+        end
 
         # convergence
         δ = 2 * abs(obj - obj_prev) / (abs(obj) + abs(obj_prev))
