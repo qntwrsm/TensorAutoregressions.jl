@@ -287,7 +287,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
                 #     denom += (loadings(Ap)[r, t - 1] - xbar)^2
                 # end
                 # dynamics(Ap).diag[r] = num / denom
-                dynamics(Ap).diag[r] = 0.4 * rand() + 0.4
+                dynamics(Ap).diag[r] = 0.5
                 # intercept
                 # intercept(Ap)[r] = ybar - dynamics(Ap).diag[r] * xbar
                 intercept(Ap)[r] = 0.0
