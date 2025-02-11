@@ -274,13 +274,17 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
     # initialize regressor tensors
     X = [[tucker(y_lags[p], U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
+    # initialize dependent variable tensor
+    Zpr = similar(y_lead)
+    # initialize error tensor
+    E = similar(y_lead)
 
     for (p, Rp) in pairs(rank(model))
         for r in 1:Rp
             for k in 1:n
                 k_ = setdiff(1:n, k)
                 # matricize dependent variable along k-th mode
-                Zpr = copy(y_lead)
+                Zpr .= y_lead
                 for (t, Zprt) in pairs(eachslice(Zpr, dims = n + 1))
                     Zprt .*= loadings(model)[p][r, t]
                     for (q, Rq) in pairs(rank(model))
@@ -304,9 +308,10 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
                 # Gram matrix
                 G = zeros(dims[k], dims[k])
-                for (t, Xprt) in pairs(eachslice(Xpr_scaled, dims = n + 1))
-                    Xkprt = matricize(Xprt, k)
-                    G .+= scale[r, t] .* Xkprt * Xkprt'
+                d = prod(dims[k_])
+                for t in 1:(nobs(model) - lags(model))
+                    Xkprt = view(Xkpr, :, (d * (t - 1) + 1):(d * t))
+                    mul!(G, Xkprt, Xkprt', scale[r, t], true)
                 end
                 # moment matrix
                 M = Zkpr * Xkpr'
@@ -335,7 +340,7 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
     end
 
     # error tensor
-    E = copy(y_lead)
+    E .= y_lead
     for (t, Et) in pairs(eachslice(E, dims = n + 1))
         for (p, Rp) in pairs(rank(model))
             for r in 1:Rp
