@@ -276,8 +276,6 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
     X = [[tucker(y_lags[p], U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
     # initialize dependent variable tensor
     Zpr = similar(y_lead)
-    # initialize error tensor
-    E = similar(y_lead)
 
     for (p, Rp) in pairs(rank(model))
         for r in 1:Rp
@@ -340,7 +338,7 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
     end
 
     # error tensor
-    E .= y_lead
+    E = copy(y_lead)
     for (t, Et) in pairs(eachslice(E, dims = n + 1))
         for (p, Rp) in pairs(rank(model))
             for r in 1:Rp
