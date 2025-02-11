@@ -29,13 +29,15 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
     y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
               for p in 1:lags(model)]
 
+    # initialize dependent variable tensor
+    Zpr = similar(y_lead)
     # initialize residuals
     resid = copy(y_lead)
 
     for (p, Rp) in pairs(rank(model))
         for r in 1:Rp
             # dependent variable tensor
-            Zpr = copy(y_lead)
+            Zpr .= y_lead
             for (q, Rq) in pairs(rank(model))
                 r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
                 for s in r_
@@ -113,10 +115,13 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
     y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
               for p in 1:lags(model)]
 
+    # initialize dependent variable tensor
+    Zpr = similar(y_lead)
+
     for (p, Rp) in pairs(rank(model))
         for r in 1:Rp
             # dependent variable tensor
-            Zpr = copy(y_lead)
+            Zpr .= y_lead
             for (q, Rq) in pairs(rank(model))
                 r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
                 for s in r_
