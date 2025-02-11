@@ -488,7 +488,7 @@ function filter(y, Z, H, c, T, Q, a1, P1)
         end
     end
 
-    return (a, P, v, F, K)
+    return (a, P, v, ZtFinv, K)
 end
 
 """
