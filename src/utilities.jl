@@ -347,12 +347,8 @@ function loading_matrix(model::DynamicTensorAutoregression)
     U = outer.(coef(model))
 
     # high-dimensional time-varying loading matrix
-    L_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
-                          for yt in Iterators.drop(Iterators.take(eachslice(data(model),
-                                                                            dims = n + 1),
-                                                                  last(dims) - p),
-                                                   lags(model) - p)]
-                         for (p, Rp) in pairs(rank(model))])
+    Z = [[tucker(data(model), U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
+    L_unstacked = stack([[stack([vec(selectdim(Zpr, n + 1, t)) for Zpr in Zp]) for t in (lags(model) - p + 1):(last(dims) - p)] for (p, Zp) in pairs(Z)])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
 end
@@ -364,11 +360,11 @@ Low-dimensional collapsing matrices for the dynamic tensor autoregressive model 
 following the approach of Jungbacker and Koopman (2015).
 """
 function collapse(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
     # precision matrices
-    Ω = inv.(cov(model))
+    Ω = inv(cov(model)[end])
+    for Σi in reverse(cov(model)[1:(end - 1)])
+        Ω = kron(Ω, inv(Σi))
+    end
 
     # high-dimensional time-varying loading matrix
     Z = loading_matrix(model)
@@ -378,8 +374,7 @@ function collapse(model::DynamicTensorAutoregression)
 
     # collapsing matrices
     Z_basis = [Zt[:, ic[t]] for (t, Zt) in pairs(Z)]
-    reduced_dims = [(dims[1:n]..., sum(ict)) for ict in ic]
-    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n), reduced_dims), Ref(Ω)), n + 1)
+    A_low = transpose.(Z_basis) .* Ref(Ω)
 
     return (A_low, Z_basis)
 end
