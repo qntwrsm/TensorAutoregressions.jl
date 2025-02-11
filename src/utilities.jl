@@ -348,7 +348,9 @@ function loading_matrix(model::DynamicTensorAutoregression)
 
     # high-dimensional time-varying loading matrix
     Z = [[tucker(data(model), U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
-    L_unstacked = stack([[stack([vec(selectdim(Zpr, n + 1, t)) for Zpr in Zp]) for t in (lags(model) - p + 1):(last(dims) - p)] for (p, Zp) in pairs(Z)])
+    L_unstacked = stack([[stack([vec(selectdim(Zpr, n + 1, t)) for Zpr in Zp])
+                          for t in (lags(model) - p + 1):(last(dims) - p)]
+                         for (p, Zp) in pairs(Z)])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
 end
