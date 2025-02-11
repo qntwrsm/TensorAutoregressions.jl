@@ -452,6 +452,44 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
 end
 
 """
+    filter(y, Z, H, c, T, Q, a1, P1) -> (a, P, v, F, K)
+
+Collapsed Kalman filter for the dynamic tensor autoregressive model used internally by the
+`smoother` routine to avoid duplicate expensive computation of state space system matrices.
+"""
+function filter(y, Z, H, c, T, Q, a1, P1)
+    # initialize filter output
+    n = length(y)
+    a = similar(y, typeof(a1), n)
+    P = similar(y, typeof(P1), n)
+    v = similar(y)
+    F = similar(y, typeof(P1))
+    K = similar(y, typeof(P1))
+
+    # initialize filter
+    a[1] = a1
+    P[1] = P1
+
+    # filter
+    for t in eachindex(y)
+        # forecast error
+        v[t] = y[t] - Z[t] * a[t]
+        F[t] = Z[t] * P[t] * Z[t]' + H[t]
+
+        # Kalman gain
+        K[t] = T * P[t] * (qr(F[t], ColumnNorm()) \ Z[t])'
+
+        # prediction
+        if t < length(y)
+            a[t + 1] = T * a[t] + K[t] * v[t] + c
+            P[t + 1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        end
+    end
+
+    return (a, P, v, F, K)
+end
+
+"""
     smoother(model) -> (α, V, Γ)
 
 Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`. Returns the
@@ -459,11 +497,12 @@ smoothed state `α`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, _) = obs_equation_params(model)
-    (_, T, _) = state_transition_params(model)
+    (y, Z, H) = obs_equation_params(model)
+    (c, T, Q) = state_transition_params(model)
+    (a1, P1) = state_space_init(model)
 
     # filter
-    (a, P, v, F, K) = filter(model)
+    (a, P, v, F, K) = filter(y, Z, H, c, T, Q, a1, P1)
     # pivoted QR decomposition
     fac = qr.(F, Ref(ColumnNorm()))
 
@@ -482,8 +521,9 @@ function smoother(model::DynamicTensorAutoregression)
         L .= T - K[t] * Z[t]
 
         # backward recursion
-        r .= (fac[t] \ Z[t])' * v[t] + L' * r
-        N .= (fac[t] \ Z[t])' * Z[t] + L' * N * L
+        ZtFinv = (fac[t] \ Z[t])'
+        r .= ZtFinv * v[t] + L' * r
+        N .= ZtFinv * Z[t] + L' * N * L
 
         # smoothing
         α[t] = a[t] + P[t] * r
