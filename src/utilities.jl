@@ -463,7 +463,8 @@ function filter(y, Z, H, c, T, Q, a1, P1)
     a = similar(y, typeof(a1), n)
     P = similar(y, typeof(P1), n)
     v = similar(y)
-    F = similar(y, typeof(P1))
+    F = similar(P1)
+    ZtFinv = similar(y, typeof(P1))
     K = similar(y, typeof(P1))
 
     # initialize filter
@@ -474,10 +475,11 @@ function filter(y, Z, H, c, T, Q, a1, P1)
     for t in eachindex(y)
         # forecast error
         v[t] = y[t] - Z[t] * a[t]
-        F[t] = Z[t] * P[t] * Z[t]' + H[t]
+        F .= Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
-        K[t] = T * P[t] * (qr(F[t], ColumnNorm()) \ Z[t])'
+        ZtFinv[t] = (qr(F, ColumnNorm()) \ Z[t])'
+        K[t] = T * P[t] * ZtFinv[t]
 
         # prediction
         if t < length(y)
@@ -502,9 +504,7 @@ function smoother(model::DynamicTensorAutoregression)
     (a1, P1) = state_space_init(model)
 
     # filter
-    (a, P, v, F, K) = filter(y, Z, H, c, T, Q, a1, P1)
-    # pivoted QR decomposition
-    fac = qr.(F, Ref(ColumnNorm()))
+    (a, P, v, ZtFinv, K) = filter(y, Z, H, c, T, Q, a1, P1)
 
     # initialize smoother output
     α = similar(a)
@@ -521,9 +521,8 @@ function smoother(model::DynamicTensorAutoregression)
         L .= T - K[t] * Z[t]
 
         # backward recursion
-        ZtFinv = (fac[t] \ Z[t])'
-        r .= ZtFinv * v[t] + L' * r
-        N .= ZtFinv * Z[t] + L' * N * L
+        r .= ZtFinv[t] * v[t] + L' * r
+        N .= ZtFinv[t] * Z[t] + L' * N * L
 
         # smoothing
         α[t] = a[t] + P[t] * r
