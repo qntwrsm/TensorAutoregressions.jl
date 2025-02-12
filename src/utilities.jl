@@ -430,7 +430,7 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
         F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
-        K[t] = T * P[t] * (qr(F[t], ColumnNorm()) \ Z[t])'
+        K[t] = T * P[t] * (F[t] \ Z[t])'
 
         # prediction
         if predict || t < length(y)
@@ -470,7 +470,7 @@ function _filter_smoother(y, Z, H, c, T, Q, a1, P1)
         F .= Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
-        ZtFinv[t] = (qr(F, ColumnNorm()) \ Z[t])'
+        ZtFinv[t] = (F \ Z[t])'
         K[t] = T * P[t] * ZtFinv[t]
 
         # prediction
@@ -509,7 +509,7 @@ function _filter_likelihood(y, Z, H, c, T, Q, a1, P1)
         F[t] = Z[t] * P * Z[t]' + H[t]
 
         # Kalman gain
-        K .= T * P * (qr(F[t], ColumnNorm()) \ Z[t])'
+        K .= T * P * (F[t] \ Z[t])'
 
         # prediction
         if t < length(y)
