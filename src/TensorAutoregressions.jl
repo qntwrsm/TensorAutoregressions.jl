@@ -11,7 +11,9 @@ TensorAutoregressions.jl
 
 module TensorAutoregressions
 
-using LinearAlgebra, Statistics, Random, Distributions, CairoMakie, Dates
+using LinearAlgebra, Statistics, Random, CairoMakie, Dates
+
+using Distributions: MvNormal
 
 using StatsAPI: StatisticalModel
 using StatsAPI: aic, aicc, bic

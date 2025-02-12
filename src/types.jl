@@ -137,6 +137,19 @@ function cov(ε::TensorNormal; full::Bool = false)
         return ε.Σ
     end
 end
+concentration(ε::AbstractTensorErrorDistribution; full::Bool = false) = inv(cov(ε))
+function concentration(ε::TensorNormal; full::Bool = false)
+    if full
+        Ω = inv(cov(ε)[end])
+        for Σi in reverse(cov(ε)[1:(end - 1)])
+            Ω = kron(Ω, inv(Σi))
+        end
+
+        return Ω
+    else
+        return inv.(cov(ε))
+    end
+end
 dof(ε::AbstractTensorErrorDistribution) = (sum(length, cov(ε)) + sum(size.(cov(ε), 1))) / 2
 
 # Tensor autoreggresive model
@@ -223,6 +236,9 @@ data(model::AbstractTensorAutoregression) = model.y
 coef(model::AbstractTensorAutoregression) = model.A
 dist(model::AbstractTensorAutoregression) = model.ε
 cov(model::AbstractTensorAutoregression; full::Bool = false) = cov(dist(model), full = full)
+function concentration(model::AbstractTensorAutoregression; full::Bool = false)
+    concentration(dist(model), full = full)
+end
 factors(model::AbstractTensorAutoregression) = factors.(coef(model))
 loadings(model::AbstractTensorAutoregression) = loadings.(coef(model))
 rank(model::AbstractTensorAutoregression) = rank.(coef(model))

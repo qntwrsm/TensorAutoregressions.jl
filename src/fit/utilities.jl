@@ -54,28 +54,23 @@ function loglikelihood(model::DynamicTensorAutoregression)
     dims = size(data(model))
     n = ndims(data(model)) - 1
 
+    # concentration matrix
+    Hinv = concentration(model, full = true)
+
+    # collapsed state space system
+    (y_low, Z_low, H_low, M) = collapse(model, objective = true)
+    (c, T, Q) = state_transition_params(model)
+    (a1, P1) = state_space_init(model)
+
     # filter
-    (_, _, v, F, _) = filter(model)
-    # pivoted QR decomposition
-    fac = qr.(F, Ref(ColumnNorm()))
-
-    # annihilator matrix
-    (A_low, Z_basis) = collapse(model)
-    M = Ref(I) .- Z_basis .* (qr.(A_low .* Z_basis, Ref(ColumnNorm())) .\ A_low)
-
-    # full precision matrix
-    Hinv = inv(cov(model, full = true))
-    # Cholesky decompositions of Σᵢ
-    C = cholesky.(Hermitian.(cov(model)))
-    # low dimensional state-covariance matrix
-    H_low = A_low .* Z_basis
+    (v, F) = _filter_likelihood(y_low, Z_low, H_low, c, T, Q, a1, P1)
 
     # log-likelihood
     # constant
     ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
     for t in 1:(last(dims) - lags(model))
         # filter component
-        ll -= 0.5 * (logdet(F[t]) + dot(v[t], fac[t] \ v[t]))
+        ll -= 0.5 * (logdet(F[t]) + dot(v[t], F[t] \ v[t]))
         # collapsed component
         et = M[t] * vec(selectdim(data(model), n + 1, t + lags(model)))
         ll -= 0.5 * dot(et, Hinv, et)
@@ -85,7 +80,7 @@ function loglikelihood(model::DynamicTensorAutoregression)
     # projection component
     for k in 1:n
         k_ = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
+        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(cov(model)[k])
     end
 
     return ll

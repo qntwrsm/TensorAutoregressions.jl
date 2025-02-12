@@ -347,28 +347,25 @@ function loading_matrix(model::DynamicTensorAutoregression)
     U = outer.(coef(model))
 
     # high-dimensional time-varying loading matrix
-    L_unstacked = stack([[stack([vec(tucker(yt, U[p][r])) for r in 1:Rp])
-                          for yt in Iterators.drop(Iterators.take(eachslice(data(model),
-                                                                            dims = n + 1),
-                                                                  last(dims) - p),
-                                                   lags(model) - p)]
-                         for (p, Rp) in pairs(rank(model))])
+    Z = [[tucker(data(model), U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
+    L_unstacked = stack([[stack([vec(selectdim(Zpr, n + 1, t)) for Zpr in Zp])
+                          for t in (lags(model) - p + 1):(last(dims) - p)]
+                         for (p, Zp) in pairs(Z)])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
 end
 
 """
-    collapse(model) -> (A_low, Z_basis)
+    collapse(model; objective = false) -> (y_low, Z_low, H_low[, M])
 
-Low-dimensional collapsing matrices for the dynamic tensor autoregressive model `model`
-following the approach of Jungbacker and Koopman (2015).
+Collapsed system components for the collapsed state space form of the dynamic tensor
+autoregressive model `model` following the approach of Jungbacker and Koopman (2015).
+Optional `objective` boolean indicating whether the collapsed system components are used for
+objective function (log-likelihood) computation, in which case additionally the annihilator
+matrix is returned.
 """
-function collapse(model::DynamicTensorAutoregression)
-    dims = size(data(model))
+function collapse(model::DynamicTensorAutoregression; objective::Bool = false)
     n = ndims(data(model)) - 1
-
-    # precision matrices
-    Ω = inv.(cov(model))
 
     # high-dimensional time-varying loading matrix
     Z = loading_matrix(model)
@@ -376,28 +373,12 @@ function collapse(model::DynamicTensorAutoregression)
     F = qr.(Z)
     ic = [broadcast(!iszero, eachcol(Ft.R)) for Ft in F]
 
+    # concentration matrix
+    Ω = concentration(model, full = true)
+
     # collapsing matrices
     Z_basis = [Zt[:, ic[t]] for (t, Zt) in pairs(Z)]
-    reduced_dims = [(dims[1:n]..., sum(ict)) for ict in ic]
-    A_low = matricize.(tucker.(tensorize.(Z_basis, Ref(1:n), reduced_dims), Ref(Ω)), n + 1)
-
-    return (A_low, Z_basis)
-end
-
-"""
-    obs_equation_params(model) -> (y_low, Z_low, H_low)
-
-Observation equation parameters for the collapsed state space form of the dynamic tensor
-autoregressive model `model` following the approach of Jungbacker and Koopman (2015).
-"""
-function obs_equation_params(model::DynamicTensorAutoregression)
-    n = ndims(data(model)) - 1
-
-    # high-dimensional time-varying loading matrix
-    Z = loading_matrix(model)
-
-    # collapsing matrices
-    (A_low, Z_basis) = collapse(model)
+    A_low = transpose.(Z_basis) .* Ref(Ω)
 
     # collapsed system
     y_low = [A_low[t] * vec(yt)
@@ -406,7 +387,14 @@ function obs_equation_params(model::DynamicTensorAutoregression)
     Z_low = A_low .* Z
     H_low = A_low .* Z_basis
 
-    return (y_low, Z_low, H_low)
+    # annihilator matrix for log-likelihood
+    if objective
+        M = Ref(I) .- Z_basis .* (H_low .\ A_low)
+
+        return (y_low, Z_low, H_low, M)
+    else
+        return (y_low, Z_low, H_low)
+    end
 end
 
 """
@@ -419,7 +407,7 @@ prediction.
 """
 function filter(model::DynamicTensorAutoregression; predict::Bool = false)
     # collapsed state space system
-    (y, Z, H) = obs_equation_params(model)
+    (y, Z, H) = collapse(model)
     (c, T, Q) = state_transition_params(model)
     (a1, P1) = state_space_init(model)
 
@@ -442,7 +430,7 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
         F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
         # Kalman gain
-        K[t] = T * P[t] * (qr(F[t], ColumnNorm()) \ Z[t])'
+        K[t] = T * P[t] * (F[t] \ Z[t])'
 
         # prediction
         if predict || t < length(y)
@@ -455,6 +443,85 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
 end
 
 """
+    _filter_smoother(y, Z, H, c, T, Q, a1, P1) -> (a, P, v, ZtFinv, K)
+
+Collapsed Kalman filter for the dynamic tensor autoregressive model used internally by the
+`smoother` routine to avoid duplicate expensive computation of state space system matrices.
+"""
+function _filter_smoother(y, Z, H, c, T, Q, a1, P1)
+    # initialize filter output
+    a = similar(y, typeof(a1))
+    P = similar(y, typeof(P1))
+    v = similar(y)
+    ZtFinv = similar(y, typeof(P1))
+    K = similar(y, typeof(P1))
+
+    # initialize storage
+    F = similar(P1)
+
+    # initialize filter
+    a[1] = a1
+    P[1] = P1
+
+    # filter
+    for t in eachindex(y)
+        # forecast error
+        v[t] = y[t] - Z[t] * a[t]
+        F .= Z[t] * P[t] * Z[t]' + H[t]
+
+        # Kalman gain
+        ZtFinv[t] = (F \ Z[t])'
+        K[t] = T * P[t] * ZtFinv[t]
+
+        # prediction
+        if t < length(y)
+            a[t + 1] = T * a[t] + K[t] * v[t] + c
+            P[t + 1] = T * P[t] * (T - K[t] * Z[t])' + Q
+        end
+    end
+
+    return (a, P, v, ZtFinv, K)
+end
+
+"""
+    _filter_likelihood(y, Z, H, c, T, Q, a1, P1) -> (v, F, fac)
+
+Collapsed Kalman filter for the dynamic tensor autoregressive model used internally by the
+`loglikelihood` routine to avoid duplicate expensive computation of collapsing components
+and state space system matrices.
+"""
+function _filter_likelihood(y, Z, H, c, T, Q, a1, P1)
+    # initialize filter output
+    v = similar(y)
+    F = similar(y, typeof(P1))
+
+    # initialize storage
+    K = similar(P1)
+
+    # initialize filter
+    a = copy(a1)
+    P = copy(P1)
+
+    # filter
+    for t in eachindex(y)
+        # forecast error
+        v[t] = y[t] - Z[t] * a
+        F[t] = Z[t] * P * Z[t]' + H[t]
+
+        # Kalman gain
+        K .= T * P * (F[t] \ Z[t])'
+
+        # prediction
+        if t < length(y)
+            a .= T * a + K * v[t] + c
+            P .= T * P * (T - K * Z[t])' + Q
+        end
+    end
+
+    return (v, F)
+end
+
+"""
     smoother(model) -> (α, V, Γ)
 
 Collapsed Kalman smoother for the dynamic tensor autoregressive model `model`. Returns the
@@ -462,13 +529,12 @@ smoothed state `α`, covariance `V`, and autocovariance `Γ`.
 """
 function smoother(model::DynamicTensorAutoregression)
     # collapsed state space system
-    (y, Z, _) = obs_equation_params(model)
-    (_, T, _) = state_transition_params(model)
+    (y, Z, H) = collapse(model)
+    (c, T, Q) = state_transition_params(model)
+    (a1, P1) = state_space_init(model)
 
     # filter
-    (a, P, v, F, K) = filter(model)
-    # pivoted QR decomposition
-    fac = qr.(F, Ref(ColumnNorm()))
+    (a, P, v, ZtFinv, K) = _filter_smoother(y, Z, H, c, T, Q, a1, P1)
 
     # initialize smoother output
     α = similar(a)
@@ -485,8 +551,8 @@ function smoother(model::DynamicTensorAutoregression)
         L .= T - K[t] * Z[t]
 
         # backward recursion
-        r .= (fac[t] \ Z[t])' * v[t] + L' * r
-        N .= (fac[t] \ Z[t])' * Z[t] + L' * N * L
+        r .= ZtFinv[t] * v[t] + L' * r
+        N .= ZtFinv[t] * Z[t] + L' * N * L
 
         # smoothing
         α[t] = a[t] + P[t] * r
