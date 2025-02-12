@@ -284,25 +284,26 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
     for (p, Rp) in pairs(rank(model))
         for r in 1:Rp
+            # dependent variable tensor
+            Zpr .= y_lead
+            for (t, Zprt) in pairs(eachslice(Zpr, dims = n + 1))
+                Zprt .*= loadings(model)[p][r, t]
+                for (q, Rq) in pairs(rank(model))
+                    r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
+                    for s in r_
+                        τ = loadings(model)[p][r, t] .* loadings(model)[q][s, t]
+                        offset = 0
+                        for j in 1:min(r, s)
+                            τ += v_half[r + offset, t] * v_half[s + offset, t]
+                            offset += R - j
+                        end
+                        Zprt .-= τ .* selectdim(X[q][s], n + 1, t)
+                    end
+                end
+            end
             for k in 1:n
                 k_ = setdiff(1:n, k)
                 # matricize dependent variable along k-th mode
-                Zpr .= y_lead
-                for (t, Zprt) in pairs(eachslice(Zpr, dims = n + 1))
-                    Zprt .*= loadings(model)[p][r, t]
-                    for (q, Rq) in pairs(rank(model))
-                        r_ = q == p ? setdiff(1:Rq, r) : 1:Rq
-                        for s in r_
-                            τ = loadings(model)[p][r, t] .* loadings(model)[q][s, t]
-                            offset = 0
-                            for j in 1:min(r, s)
-                                τ += v_half[r + offset, t] * v_half[s + offset, t]
-                                offset += R - j
-                            end
-                            Zprt .-= τ .* selectdim(X[q][s], n + 1, t)
-                        end
-                    end
-                end
                 Zpr_scaled = tucker(Zpr, Cinv[k_], k_)
                 Zkpr = matricize(Zpr_scaled, k)
                 # matricize regressor along k-th mode
@@ -334,11 +335,11 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
                 # update outer product of Kruskal factors
                 U[p][r][k] .= factors(model)[p][k + n][:, r] * factors(model)[p][k][:, r]'
-                # update regressor tensor
-                X[p][r] .= tucker(y_lags[p], U[p][r])
                 # update scaling
                 mul!(S[p][r][k], Cinv[k], U[p][r][k])
             end
+            # update regressor tensor
+            X[p][r] .= tucker(y_lags[p], U[p][r])
         end
     end
 
@@ -352,6 +353,22 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
         end
     end
 
+    # accumulate scaled regressor tensors
+    offset = 0
+    Xs = [zero(y_lead) for r in 1:R]
+    for j in 1:R
+        p = sum(x -> isless(x, j), Rc) + 1
+        r = j - get(Rc, p - 1, 0)
+        for l in j:R
+            q = sum(x -> isless(x, l), Rc) + 1
+            s = l - get(Rc, q - 1, 0)
+            for (t, Xsjt) in pairs(eachslice(Xs[j], dims = n + 1))
+                Xsjt .+= v_half[l - j + 1 + offset, t] .* selectdim(X[q][s], n + 1, t)
+            end
+        end
+        offset += R - j + 1
+    end
+
     for k in 1:n
         k_ = setdiff(1:n, k)
         # matricize error along k-th mode
@@ -361,21 +378,10 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
         # update covariance
         mul!(cov(model)[k].data, Ek, Ek')
         offset = 0
-        for j in 1:R
-            p = sum(x -> isless(x, j), Rc) + 1
-            r = j - get(Rc, p - 1, 0)
-            Xs = zero(X[p][r])
-            for l in j:R
-                q = sum(x -> isless(x, l), Rc) + 1
-                s = l - get(Rc, q - 1, 0)
-                for (t, Xst) in pairs(eachslice(Xs, dims = n + 1))
-                    Xst .+= v_half[l - j + 1 + offset, t] .* selectdim(X[q][s], n + 1, t)
-                end
-            end
-            Xs_scaled = tucker(Xs, Cinv[k_], k_)
-            Xks = matricize(Xs_scaled, k)
-            mul!(cov(model)[k].data, Xks, Xks', true, true)
-            offset += R - j + 1
+        for Xsr in Xs
+            Xsr_scaled = tucker(Xsr, Cinv[k_], k_)
+            Xskr = matricize(Xsr_scaled, k)
+            mul!(cov(model)[k].data, Xskr, Xskr', true, true)
         end
         lmul!(inv((last(dims) - lags(model)) * prod(dims[k_])), cov(model)[k].data)
 
