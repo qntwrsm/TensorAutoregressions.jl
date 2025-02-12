@@ -270,28 +270,9 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
 
         # transition dynamics
         for Ap in coef(model)
-            for r in 1:rank(Ap)
-                ybar = sum(view(loadings(Ap), r, 2:(last(dims) - lags(model)))) /
-                       (last(dims) - lags(model) - 1)
-                xbar = sum(view(loadings(Ap), r, 1:(last(dims) - lags(model) - 1))) /
-                       (last(dims) - lags(model) - 1)
-                # dynamics
-                num = denom = zero(dynamics(Ap).diag[r])
-                for t in 2:(last(dims) - lags(model))
-                    num += (loadings(Ap)[r, t] - ybar) * (loadings(Ap)[r, t - 1] - xbar)
-                    denom += (loadings(Ap)[r, t - 1] - xbar)^2
-                end
-                dynamics(Ap).diag[r] = num / denom
-                # intercept
-                intercept(Ap)[r] = ybar - dynamics(Ap).diag[r] * xbar
-                # variance
-                cov(Ap).diag[r] = zero(cov(Ap).diag[r])
-                for t in 2:(last(dims) - lags(model))
-                    cov(Ap).diag[r] += (loadings(Ap)[r, t] - intercept(Ap)[r] -
-                                        dynamics(Ap).diag[r] * loadings(Ap)[r, t - 1])^2
-                end
-                cov(Ap).diag[r] /= last(dims) - lags(model) - 1
-            end
+            dynamics(Ap).diag .= 0.5
+            intercept(Ap) .= 0.0
+            cov(Ap).diag .= 1.0
         end
     end
 
