@@ -599,13 +599,5 @@ function simulate(ε::TensorNormal, S::Integer, rng::AbstractRNG)
     # Cholesky decompositions of Σᵢ
     C = getproperty.(cholesky.(cov(ε)), :L)
 
-    e = zeros(dims..., S)
-    # simulate
-    for es in eachslice(e, dims = length(dims) + 1)
-        # sample independent random normals and use tucker product with Cholesky
-        # decompositions
-        es .= tucker(randn(rng, dims...), C)
-    end
-
-    return e
+    return tucker(randn(rng, dims..., S), C)
 end
