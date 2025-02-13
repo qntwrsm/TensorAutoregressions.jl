@@ -14,11 +14,11 @@ tensor_algebra.jl
 Matricize tensor `A` by unfolding along modes `n`.
 """
 function matricize(A::AbstractArray, n)
-    dims = size(A)
+    d = size(A)
     m = setdiff(1:ndims(A), n)
     perm = [n; m]
 
-    return reshape(permutedims(A, perm), prod(dims[n]), prod(dims[m]))
+    return reshape(permutedims(A, perm), prod(d[n]), prod(d[m]))
 end
 
 """
@@ -39,11 +39,11 @@ end
 Tucker operator along modes `n` of tensor `G` with matrices `A`.
 """
 function tucker(G::AbstractArray, A::AbstractVector, n)
-    dims = collect(size(G))
+    d = collect(size(G))
     for (i, k) in enumerate(n)
         Gk = matricize(G, k)
-        dims[k] = size(A[i], 1)
-        G = tensorize(A[i] * Gk, k, dims)
+        d[k] = size(A[i], 1)
+        G = tensorize(A[i] * Gk, k, d)
     end
 
     return G

@@ -29,8 +29,8 @@ function loglikelihood(model::StaticTensorAutoregression)
     dist(model) isa WhiteNoise &&
         error("Log-likelihood not available for white noise error distribution.")
 
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(Hermitian.(cov(model)))
@@ -39,11 +39,11 @@ function loglikelihood(model::StaticTensorAutoregression)
 
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
+    ll = -0.5 * (nobs(model) - lags(model)) * prod(d) * log(2π)
     # log determinant component
     for k in 1:n
         k_ = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(C[k])
+        ll -= 0.5 * (nobs(model) - lags(model)) * prod(d[k_]) * logdet(C[k])
     end
     # fit component
     ll -= 0.5 * norm(tucker(residuals(model), Cinv))^2
@@ -51,8 +51,8 @@ function loglikelihood(model::StaticTensorAutoregression)
     return ll
 end
 function loglikelihood(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # concentration matrix
     Hinv = concentration(model, full = true)
@@ -67,8 +67,8 @@ function loglikelihood(model::DynamicTensorAutoregression)
 
     # log-likelihood
     # constant
-    ll = -0.5 * (last(dims) - lags(model)) * prod(dims[1:n]) * log(2π)
-    for t in 1:(last(dims) - lags(model))
+    ll = -0.5 * (nobs(model) - lags(model)) * prod(d) * log(2π)
+    for t in 1:(nobs(model) - lags(model))
         # filter component
         ll -= 0.5 * (logdet(F[t]) + dot(v[t], F[t] \ v[t]))
         # collapsed component
@@ -80,7 +80,7 @@ function loglikelihood(model::DynamicTensorAutoregression)
     # projection component
     for k in 1:n
         k_ = setdiff(1:n, k)
-        ll -= 0.5 * (last(dims) - lags(model)) * prod(dims[k_]) * logdet(cov(model)[k])
+        ll -= 0.5 * (nobs(model) - lags(model)) * prod(d[k_]) * logdet(cov(model)[k])
     end
 
     return ll
@@ -92,12 +92,11 @@ end
 Return the residuals of the tensor autoregressive model `model`.
 """
 function residuals(model::StaticTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # outer product of Kruskal factors
@@ -114,12 +113,11 @@ function residuals(model::StaticTensorAutoregression)
     return ε
 end
 function residuals(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # outer product of Kruskal factors
@@ -193,20 +191,20 @@ In case of a dynamic Kruskal tensor the dynamic paramaters are obtained from the
 model representation of the model.
 """
 function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-    N = prod(dims[1:n])
-    kruskal_shape = (dims[1:n]..., dims[1:n]...)
+    d = dims(model)
+    n = length(d)
+    N = prod(d)
+    kruskal_shape = (d..., d...)
     Rc = cumsum(rank(model))
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # dependent variable and regressor
-    z = reshape(y_lead, :, last(dims) - lags(model))
-    x = vcat(reshape.(y_lags, :, last(dims) - lags(model))...)
+    z = reshape(y_lead, :, nobs(model) - lags(model))
+    x = vcat(reshape.(y_lags, :, nobs(model) - lags(model))...)
 
     if method == :data
         # ridge regression
@@ -220,8 +218,9 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
             β[i] = M / (F + γi * I)
             rss = norm(z - β[i] * x)^2
             df = tr(x' / (F + γi * I) * x)
-            bic[i] = (last(dims) - lags(model)) * log(rss * inv(last(dims) - lags(model))) +
-                     df * log(last(dims) - lags(model))
+            bic[i] = (nobs(model) - lags(model)) *
+                     log(rss * inv(nobs(model) - lags(model))) +
+                     df * log(nobs(model) - lags(model))
         end
         # optimal
         β_star = β[argmin(bic)]
@@ -238,9 +237,9 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         end
     elseif method == :random
         for Ap in coef(model), k in 1:n, r in 1:rank(Ap)
-            factors(Ap)[k][:, r] .= randn(dims[k])
+            factors(Ap)[k][:, r] .= randn(d[k])
             factors(Ap)[k][:, r] .*= inv(norm(factors(Ap)[k][:, r]))
-            factors(Ap)[k + n][:, r] .= randn(dims[k])
+            factors(Ap)[k + n][:, r] .= randn(d[k])
             factors(Ap)[k + n][:, r] .*= inv(norm(factors(Ap)[k + n][:, r]))
         end
     end
@@ -295,18 +294,18 @@ Initialization of the tensor error distribution is based on a randomly sampled c
 matrix from an inverse Wishart distribution.
 """
 function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # error distribution
     resid = residuals(model)
     # covariance
     if dist(model) isa WhiteNoise
         if method == :data
-            cov(model).data .= cov(reshape(resid, :, 1:(last(dims) - lags(model))),
+            cov(model).data .= cov(reshape(resid, :, 1:(nobs(model) - lags(model))),
                                    dims = 2)
         elseif method == :random
-            N = prod(dims[1:n])
+            N = prod(d)
             cov(model).data .= rand(InverseWishart(N + 2, I(N)))
         end
     else
@@ -315,7 +314,7 @@ function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
             if method == :data
                 cov(model)[k].data .= cov(matricize(resid, k), dims = 2)
             elseif method == :random
-                cov(model)[k].data .= rand(InverseWishart(dims[k] + 2, I(dims[k])))
+                cov(model)[k].data .= rand(InverseWishart(d[k] + 2, I(d[k])))
             end
             if k < n
                 scale *= norm(cov(model)[k])

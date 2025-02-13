@@ -60,9 +60,10 @@ Moving average, ``MA(∞)``, representation of the static tensor autoregressive 
 computed up to the `n`th term.
 """
 function moving_average(model::StaticTensorAutoregression, n::Integer)
-    dims = size(coef(model)[1])
-    m = (length(dims) ÷ 2 + 1):length(dims)
-    K = prod(dims[m])
+    d = dims(model)
+    nd = length(d)
+    m = (nd + 1):(2nd)
+    K = prod(d[m])
     Ty = eltype(data(model))
 
     # identity matrix
@@ -87,8 +88,8 @@ function moving_average(model::StaticTensorAutoregression, n::Integer)
         end
     end
 
-    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref(dims)),
-                 dims = length(dims) + 1)
+    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref((d..., d...))),
+                 dims = 2nd + 1)
 end
 
 """
@@ -132,9 +133,6 @@ an optional `shock` at series given by `index` using random number generator `rn
 """
 function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
                  conditional::Integer, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
     # sample particles
     particles = particle_sampler(model, periods, conditional, samples, rng)
 
@@ -142,16 +140,13 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     noise = simulate(dist(model), samples * periods, rng)
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, samples)
+    paths = similar(data(model), dims(model)..., periods, samples)
     path_sampler!(paths, model, particles, noise, conditional)
 
     return paths
 end
 function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
                  conditional::Integer, shock::Real, index::Dims, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
-
     # sample particles
     particles = particle_sampler(model, periods, conditional, samples, rng)
 
@@ -161,15 +156,15 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     noise[index..., 1] = shock
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, samples)
+    paths = similar(data(model), dims(model)..., periods, samples)
     path_sampler!(paths, model, particles, noise, conditional)
 
     return paths
 end
 function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
                  conditional::AbstractUnitRange, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # sample particles
     particles = particle_sampler(model, periods, conditional, samples, rng)
@@ -178,7 +173,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     noise = simulate(dist(model), periods * samples * length(conditional), rng)
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, length(conditional), samples)
+    paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
         path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
                       selectdim(noise, n + 1,
@@ -190,8 +185,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
 end
 function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::Integer,
                  conditional::AbstractUnitRange, shock::Real, index::Dims, rng::AbstractRNG)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # sample particles
     particles = particle_sampler(model, periods, conditional, samples, rng)
@@ -202,7 +197,7 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     noise[index..., 1:(periods * samples):end] .= shock
 
     # sample paths
-    paths = similar(data(model), dims[1:n]..., periods, length(conditional), samples)
+    paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
         path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
                       selectdim(noise, n + 1,
@@ -220,7 +215,7 @@ Sample conditional paths from the `model` given simulated `particles` and `noise
 """
 function path_sampler!(paths::AbstractArray, model::DynamicTensorAutoregression,
                        particles::AbstractArray, noise::AbstractArray, conditional::Integer)
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
     Rc = cumsum(rank(model))
 
     # outer product of Kruskal factors
@@ -340,8 +335,7 @@ High-dimensional loading matrix for the state space form of the dynamic tensor
 autoregressive model `model`.
 """
 function loading_matrix(model::DynamicTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
@@ -349,7 +343,7 @@ function loading_matrix(model::DynamicTensorAutoregression)
     # high-dimensional time-varying loading matrix
     Z = [[tucker(data(model), U[p][r]) for r in 1:Rp] for (p, Rp) in pairs(rank(model))]
     L_unstacked = stack([[stack([vec(selectdim(Zpr, n + 1, t)) for Zpr in Zp])
-                          for t in (lags(model) - p + 1):(last(dims) - p)]
+                          for t in (lags(model) - p + 1):(nobs(model) - p)]
                          for (p, Zp) in pairs(Z)])
 
     return broadcast(splat(hcat), eachrow(L_unstacked))
@@ -365,7 +359,7 @@ objective function (log-likelihood) computation, in which case additionally the 
 matrix is returned.
 """
 function collapse(model::DynamicTensorAutoregression; objective::Bool = false)
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
 
     # high-dimensional time-varying loading matrix
     Z = loading_matrix(model)
@@ -594,10 +588,10 @@ Simulate from the tensor error distribution `ε` `S` times using the random numb
 """
 simulate(ε::WhiteNoise, S::Integer, rng::AbstractRNG) = error("simulating data from white noise error not supported.")
 function simulate(ε::TensorNormal, S::Integer, rng::AbstractRNG)
-    dims = size.(cov(ε), 1)
+    d = size.(cov(ε), 1)
 
     # Cholesky decompositions of Σᵢ
     C = getproperty.(cholesky.(cov(ε)), :L)
 
-    return tucker(randn(rng, dims..., S), C)
+    return tucker(randn(rng, d..., S), C)
 end

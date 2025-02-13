@@ -18,15 +18,14 @@ solve. Wrapper to invoke multiple dispatch over static and dynamic tensor autore
 """
 function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise,
                                                    <:AbstractVector})
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    n = length(dims(model))
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # initialize dependent variable tensor
@@ -93,8 +92,8 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:WhiteNoise
 end
 function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNormal,
                                                    <:AbstractVector})
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # Cholesky decompositions of Σᵢ
     C = cholesky.(cov(model))
@@ -111,8 +110,8 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
          for (p, Rp) in pairs(rank(model))]
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # initialize dependent variable tensor
@@ -189,7 +188,7 @@ function update!(model::StaticTensorAutoregression{<:AbstractArray, <:TensorNorm
 
         # update covariance
         mul!(cov(model)[k].data, Ek, Ek',
-             inv((last(dims) - lags(model)) * prod(dims[k_])), false)
+             inv((nobs(model) - lags(model)) * prod(d[k_])), false)
 
         # normalize
         k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)
@@ -228,8 +227,8 @@ Update observation equation parameters of the dynamic tensor autoregressive mode
 based on smoothed loading variance `V` and using an alternating least squares (ALS) solve.
 """
 function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVector)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
     R = sum(rank(model))
     Rc = cumsum(rank(model))
 
@@ -248,8 +247,8 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
          for (p, Rp) in pairs(rank(model))]
 
     # lag and lead variables
-    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):last(dims))
-    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(last(dims) - p))
+    y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
+    y_lags = [selectdim(data(model), n + 1, (lags(model) - p + 1):(nobs(model) - p))
               for p in 1:lags(model)]
 
     # Cholesky decomposition of V
@@ -267,7 +266,7 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
     # Gram matrix scaling
     scale = vcat(loadings(model)...) .^ 2
-    for t in 1:(last(dims) - lags(model))
+    for t in 1:(nobs(model) - lags(model))
         for r in 1:R
             offset = 0
             for s in 1:r
@@ -311,8 +310,8 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
                 Xkpr = matricize(Xpr_scaled, k)
 
                 # Gram matrix
-                G = zeros(dims[k], dims[k])
-                d = prod(dims[k_])
+                G = zeros(d[k], d[k])
+                d = prod(d[k_])
                 for t in 1:(nobs(model) - lags(model))
                     Xkprt = view(Xkpr, :, (d * (t - 1) + 1):(d * t))
                     mul!(G, Xkprt, Xkprt', scale[r, t], true)
@@ -383,7 +382,7 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
             Xskr = matricize(Xsr_scaled, k)
             mul!(cov(model)[k].data, Xskr, Xskr', true, true)
         end
-        lmul!(inv((last(dims) - lags(model)) * prod(dims[k_])), cov(model)[k].data)
+        lmul!(inv((nobs(model) - lags(model)) * prod(d[k_])), cov(model)[k].data)
 
         # normalize
         k != n && lmul!(inv(norm(cov(model)[k])), cov(model)[k].data)

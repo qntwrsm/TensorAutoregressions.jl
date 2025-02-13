@@ -175,19 +175,19 @@ struct StaticTensorAutoregression{Ty <: AbstractArray,
     function StaticTensorAutoregression(y::AbstractArray,
                                         ε::AbstractTensorErrorDistribution,
                                         A::AbstractVector)
-        dims = size(y)
+        di = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
-            prod(dims[1:n]) == size(cov(ε), 1) ||
+            prod(d[1:n]) == size(cov(ε), 1) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         elseif ε isa TensorNormal
-            all(dims[1:n] .== size.(cov(ε), 1)) ||
+            all(d[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
         for (p, Ap) in enumerate(A)
             Ap isa StaticKruskal ||
                 throw(ArgumentError("only static Kruskal tensors allowed."))
-            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+            all((d[1:n]..., d[1:n]...) .== size.(factors(Ap), 1)) ||
                 throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
                                         "must equal number of columns of y."))
         end
@@ -211,18 +211,18 @@ struct DynamicTensorAutoregression{Ty <: AbstractArray,
     function DynamicTensorAutoregression(y::AbstractArray,
                                          ε::AbstractTensorErrorDistribution,
                                          A::AbstractVector)
-        dims = size(y)
+        d = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
             throw(ArgumentError("dynamic model with white noise error not supported."))
         elseif ε isa TensorNormal
-            all(dims[1:n] .== size.(cov(ε), 1)) ||
+            all(d[1:n] .== size.(cov(ε), 1)) ||
                 throw(DimensionMismatch("dimensions of y and Σ must be equal."))
         end
         for (p, Ap) in enumerate(A)
             Ap isa DynamicKruskal ||
                 throw(ArgumentError("only dynamic Kruskal tensors allowed."))
-            all((dims[1:n]..., dims[1:n]...) .== size.(factors(Ap), 1)) ||
+            all((d[1:n]..., d[1:n]...) .== size.(factors(Ap), 1)) ||
                 throw(DimensionMismatch("dimensions of loadings for lag" * str(p) *
                                         "must equal number of columns of y."))
         end
@@ -243,6 +243,7 @@ factors(model::AbstractTensorAutoregression) = factors.(coef(model))
 loadings(model::AbstractTensorAutoregression) = loadings.(coef(model))
 rank(model::AbstractTensorAutoregression) = rank.(coef(model))
 lags(model::AbstractTensorAutoregression) = length(coef(model))
+dims(model::AbstractTensorAutoregression) = front(size(data(model)))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
 

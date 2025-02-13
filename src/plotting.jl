@@ -18,22 +18,22 @@ plotting.jl
 Plot the time series data, with optionally specified `labels` and `time` index.
 """
 function data_plot(model::AbstractTensorAutoregression)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # sort modes
-    maxmode = argmax(dims[1:(n - 1)])
-    m = setdiff(1:(n - 1), maxmode)
+    maxmode = argmax(d)
+    m = setdiff(1:n, maxmode)
 
     # setup subplots
-    cols = iseven(dims[maxmode]) ? 2 : 3
-    rows = ceil(Int, dims[maxmode] / cols)
+    cols = iseven(d[maxmode]) ? 2 : 3
+    rows = ceil(Int, d[maxmode] / cols)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
     fig = Figure(resolution = (cols * 800, cols * 600))
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:dims[maxmode]]]
-    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:dims[n]]
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:d[maxmode]]]
+    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:last(d)]
 
     # layout
     for grid in grids
@@ -43,12 +43,12 @@ function data_plot(model::AbstractTensorAutoregression)
 
     # link axes
     linkxaxes!(axs...)
-    for i in 1:dims[n]
+    for i in 1:last(d)
         linkyaxes!(axs[:, i]...)
     end
 
     # decorations
-    for i in 1:dims[maxmode]
+    for i in 1:d[maxmode]
         axs[i, end].xlabel = "time"
         axs[i, end].xticks = (ticks, values)
     end
@@ -56,21 +56,21 @@ function data_plot(model::AbstractTensorAutoregression)
     hideydecorations!.(axs[(rows + 1):end, :], grid = false)
 
     # data
-    colors = resample_cmap(:viridis, prod(dims[m]))
+    colors = resample_cmap(:viridis, prod(d[m]))
     for (idx, ax) in pairs(IndexCartesian(), axs)
         y = selectdim(data(model), maxmode, idx[1])
-        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, last(dims)), color = colors)
+        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, nobs(model)), color = colors)
     end
 
     return fig
 end
 function data_plot(model::AbstractTensorAutoregression, labels, time)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # sort modes
-    maxmode = argmax(dims[1:(n - 1)])
-    m = setdiff(1:(n - 1), maxmode)
+    maxmode = argmax(d)
+    m = setdiff(1:n, maxmode)
 
     # combine time series labels
     sub_labels = labels[m[1]]
@@ -83,14 +83,14 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
     ticks = [findfirst(string.(year.(time)) .== value) for value in values]
 
     # setup subplots
-    cols = iseven(dims[maxmode]) ? 2 : 3
-    rows = ceil(Int, dims[maxmode] / cols)
+    cols = iseven(d[maxmode]) ? 2 : 3
+    rows = ceil(Int, d[maxmode] / cols)
     indices = CartesianIndices((rows, cols))
 
     # setup figure
     fig = Figure(resolution = (cols * 800, cols * 600))
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:dims[maxmode]]]
-    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:dims[n]]
+    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:d[maxmode]]]
+    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:last(d)]
 
     # layout
     for grid in grids
@@ -100,12 +100,12 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
 
     # link axes
     linkxaxes!(axs...)
-    for i in 1:dims[n]
+    for i in 1:last(d)
         linkyaxes!(axs[:, i]...)
     end
 
     # decorations
-    for i in 1:dims[maxmode], j in 1:dims[n]
+    for i in 1:d[maxmode], j in 1:last(d)
         axs[i, j].xlabel = "time"
         axs[i, j].xticks = (ticks, values)
     end
@@ -126,15 +126,15 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
     end
 
     # data
-    colors = resample_cmap(:viridis, prod(dims[m]))
+    colors = resample_cmap(:viridis, prod(d[m]))
     for (idx, ax) in pairs(IndexCartesian(), axs)
         y = selectdim(data(model), maxmode, idx[1])
-        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, last(dims)), color = colors,
+        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, nobs(model)), color = colors,
                 labels = sub_labels)
     end
 
     # add legend
-    if dims[maxmode] == length(indices)
+    if d[maxmode] == length(indices)
         Legend(fig[:, cols + 1], axs[1], "sectors")
     else
         Legend(fig[rows, cols], axs[1], "sectors", tellwidth = false, halign = :left)
@@ -150,8 +150,8 @@ Plot factors and loadings of the Kruskal coefficient tensor `A` with optionally 
 `labels` and `time`.
 """
 function kruskal_plot(A::StaticKruskal)
-    dims = size(A)
-    n = length(dims) ÷ 2
+    d = size(A)
+    n = length(d) ÷ 2
 
     # setup figure
     fig = Figure(resolution = (1600, 1600))
@@ -164,8 +164,8 @@ function kruskal_plot(A::StaticKruskal)
     return fig
 end
 function kruskal_plot(A::StaticKruskal, labels)
-    dims = size(A)
-    n = length(dims) ÷ 2
+    d = size(A)
+    n = length(d) ÷ 2
 
     # setup figures
     fig = Figure(resolution = (1600, 1600))
@@ -178,9 +178,9 @@ function kruskal_plot(A::StaticKruskal, labels)
     ax = Axis(gm[1, 1])
 
     # label grids
-    for i in 1:dims[n]
-        nested_labels!(GridLayout(gl[i, 1]), dims, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), dims, n, i, labels, :bottom)
+    for i in 1:d[n]
+        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
+        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
     end
 
     # Kruskal coefficient tensor
@@ -188,14 +188,14 @@ function kruskal_plot(A::StaticKruskal, labels)
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    ax.xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
-    ax.yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    ax.xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    ax.yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
 
     return fig
 end
 function kruskal_plot(A::DynamicKruskal)
-    dims = size(A)
-    n = length(dims) ÷ 2
+    d = size(A)
+    n = length(d) ÷ 2
 
     # setup figures
     figs = [Figure(resolution = (1600, 1600)), Figure()]
@@ -211,8 +211,8 @@ function kruskal_plot(A::DynamicKruskal)
     return figs
 end
 function kruskal_plot(A::DynamicKruskal, labels, time)
-    dims = size(A)
-    n = length(dims) ÷ 2
+    d = size(A)
+    n = length(d) ÷ 2
 
     # setup figures
     figs = [Figure(resolution = (1600, 1600)), Figure()]
@@ -225,9 +225,9 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     axs = [Axis(gm[1, 1]), Axis(figs[2][1, 1])]
 
     # label grids
-    for i in 1:dims[n]
-        nested_labels!(GridLayout(gl[i, 1]), dims, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), dims, n, i, labels, :bottom)
+    for i in 1:d[n]
+        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
+        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
     end
 
     # Kruskal coefficient tensor factors
@@ -235,8 +235,8 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    axs[1].xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
-    axs[1].yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    axs[1].xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    axs[1].yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
 
     # dynamic Kruskal loadings
     series!(axs[2], loadings(A), color = :viridis)
@@ -267,8 +267,8 @@ function cov_plot(ε::AbstractTensorErrorDistribution)
     return fig
 end
 function cov_plot(ε::AbstractTensorErrorDistribution, labels)
-    dims = size.(cov(ε), 1)
-    n = length(dims)
+    d = size.(cov(ε), 1)
+    n = length(d)
 
     # setup figures
     fig = Figure(resolution = (1600, 1600))
@@ -281,9 +281,9 @@ function cov_plot(ε::AbstractTensorErrorDistribution, labels)
     ax = Axis(gm[1, 1])
 
     # label grids
-    for i in 1:dims[n]
-        nested_labels!(GridLayout(gl[i, 1]), dims, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), dims, n, i, labels, :bottom)
+    for i in 1:d[n]
+        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
+        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
     end
 
     # covariance matrix
@@ -291,17 +291,17 @@ function cov_plot(ε::AbstractTensorErrorDistribution, labels)
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    ax.xticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
-    ax.yticks = (1:prod(dims[1:n]), repeat(labels[1], prod(dims[2:n])))
+    ax.xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    ax.yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
 
     return fig
 end
 
 """
-    nested_labels!(grid, dims, n, i, labels, loc)
+    nested_labels!(grid, d, n, i, labels, loc)
 
 Add recursively nested `i`-th label from `n`nd level from `labels` to a grid layout `grid`
-with dimensions `dims` for the levels and `loc` indicating the location of the labels.
+with dimensions `d` for the levels and `loc` indicating the location of the labels.
 """
 function nested_labels!(grid, dims, n, i, labels, loc)
     # terminate at final to last level (last level are axis ticks)

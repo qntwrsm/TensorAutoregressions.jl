@@ -74,17 +74,17 @@ return a new instance with the simulated data, using random number generator
 """
 function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # tensor error distribution
-    ε = simulate(dist(model), last(dims) + burn, rng)
+    ε = simulate(dist(model), nobs(model) + burn, rng)
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn + lags(model))
+    y_burn = similar(data(model), d..., burn + lags(model))
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
         yt .= selectdim(ε, n + 1, t)
@@ -119,25 +119,25 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
 end
 function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
                   rng::AbstractRNG = Xoshiro())
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
 
     # Kruskal coefficient
-    λ = simulate.(coef(model), last(dims) + burn - lags(model), rng)
+    λ = simulate.(coef(model), nobs(model) + burn - lags(model), rng)
     A = [DynamicKruskal((deepcopy(getproperty(Ap, p)) for p in propertynames(Ap))...)
          for Ap in coef(model)]
     for (p, Ap) in pairs(A)
-        loadings(Ap) .= λ[p][:, (burn + 1):(last(dims) + burn - lags(model))]
+        loadings(Ap) .= λ[p][:, (burn + 1):(nobs(model) + burn - lags(model))]
     end
 
     # tensor error distribution
-    ε = simulate(dist(model), last(dims) + burn, rng)
+    ε = simulate(dist(model), nobs(model) + burn, rng)
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), dims[1:n]..., burn)
+    y_burn = similar(data(model), d..., burn)
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
         yt .= selectdim(ε, n + 1, t)
@@ -194,8 +194,8 @@ function fit!(model::AbstractTensorAutoregression;
     if verbose
         println("Tensor autoregressive model")
         println("===========================")
-        println("Dimensions: $(size(data(model))[1:end-1])")
-        println("Number of observations: $(size(data(model))[end])")
+        println("Dimensions: $(dims(model))")
+        println("Number of observations: $(nobs(model))")
         println("Number of lags: $(lags(model))")
         println("Rank: $(rank(model))")
         println("Distribution: $(Base.typename(typeof(dist(model))).wrapper)")
@@ -264,18 +264,18 @@ using `samples` and random number generator `rng` for the Monte Carlo estimate o
 dynamic case.
 """
 function forecast(model::StaticTensorAutoregression, periods::Integer)
-    dims = size(data(model))
-    n = ndims(data(model)) - 1
+    d = dims(model)
+    n = length(d)
     Ty = eltype(data(model))
 
     # outer product of Kruskal factors
     U = outer.(coef(model))
 
     # forecast data using tensor autoregression
-    forecasts = zeros(Ty, dims[1:n]..., periods)
+    forecasts = zeros(Ty, d..., periods)
     for h in 1:periods, (p, Ap) in pairs(coef(model))
         if h <= p
-            yp = selectdim(data(model), n + 1, last(dims) + h - p)
+            yp = selectdim(data(model), n + 1, nobs(model) + h - p)
         else
             yp = selectdim(forecasts, n + 1, h - p)
         end
