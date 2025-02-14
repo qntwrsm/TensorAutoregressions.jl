@@ -243,7 +243,7 @@ factors(model::AbstractTensorAutoregression) = factors.(coef(model))
 loadings(model::AbstractTensorAutoregression) = loadings.(coef(model))
 rank(model::AbstractTensorAutoregression) = rank.(coef(model))
 lags(model::AbstractTensorAutoregression) = length(coef(model))
-dims(model::AbstractTensorAutoregression) = front(size(data(model)))
+dims(model::AbstractTensorAutoregression) = Base.front(size(data(model)))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
 

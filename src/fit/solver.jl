@@ -311,9 +311,9 @@ function update_obs_params!(model::DynamicTensorAutoregression, V::AbstractVecto
 
                 # Gram matrix
                 G = zeros(d[k], d[k])
-                d = prod(d[k_])
+                N_ = prod(d[k_])
                 for t in 1:(nobs(model) - lags(model))
-                    Xkprt = view(Xkpr, :, (d * (t - 1) + 1):(d * t))
+                    Xkprt = view(Xkpr, :, (N_ * (t - 1) + 1):(N_ * t))
                     mul!(G, Xkprt, Xkprt', scale[r, t], true)
                 end
                 # moment matrix
