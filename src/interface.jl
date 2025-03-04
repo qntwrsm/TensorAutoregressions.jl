@@ -296,7 +296,7 @@ function forecast(model::DynamicTensorAutoregression, periods::Integer,
 end
 
 """
-    irf(model, periods; alpha = 0.05[, samples = 100, rng = Xoshiro()]) -> irfs
+    irf(model, periods[, shock, index]; alpha = 0.05[, samples = 100, rng = Xoshiro()]) -> irfs
 
 Compute generalized impulse response functions `periods` ahead and corresponding `alpha`%
 upper and lower confidence bounds using fitted tensor autoregressive model `model`. Upper
@@ -318,9 +318,12 @@ function irf(model::StaticTensorAutoregression, periods::Integer; alpha::Real = 
 end
 #TODO Incorporate shock and index into dynamic IRF.
 #TODO Additionally DynamicIRF needs to be based on single shock basis if computation time is too large.
-function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real = 0.05,
-             samples::Integer = 100, rng::AbstractRNG = Xoshiro())
-    Ψ_stars = map(1:samples) do _
+function irf(model::DynamicTensorAutoregression, periods::Integer, shock::Real, index::Dims;
+             alpha::Real = 0.05, samples::Integer = 100, rng::AbstractRNG = Xoshiro())
+    # sample girfs
+    Ψ_stars = similar(data(model), dims(model)..., periods, nobs(model) - lags(model),
+                      samples)
+    for Ψ_star in eachslice(Ψ_stars, dims = ndims(Ψ_stars))
         # sample conditional paths
         conditional = sampler(model, samples, periods, (lags(model) + 1):nobs(model), shock,
                               index, rng)
@@ -330,12 +333,11 @@ function irf(model::DynamicTensorAutoregression, periods::Integer; alpha::Real =
 
         # Monte Carlo estimate of conditional expectations
         n = ndims(conditional)
-        dropdims(mean(conditional, dims = n), dims = n) .-
-        dropdims(mean(unconditional, dims = n), dims = n)
+        Ψ_star .= dropdims(mean(conditional, dims = n), dims = n) .-
+                  dropdims(mean(unconditional, dims = n), dims = n)
     end
-    Ψ_stars = cat(Ψ_stars..., dims = ndims(Ψ_stars[1]) + 1)
 
-    # Monte Carlo estimate
+    # Monte Carlo estimate girf
     Ψ_star = mean(Ψ_stars, dims = ndims(Ψ_stars))
 
     # quantiles
