@@ -291,12 +291,9 @@ end
 irf(irfs::AbstractIRF) = irfs.Ψ
 irf(irfs::StaticIRF, impulse, response) = @view irf(irfs)[impulse..., response..., :]
 irf(irfs::DynamicIRF, response) = @view irf(irfs)[response..., :]
-irf(irfs::DynamicIRF, response) = @view irf(irfs)[response..., :]
 lower(irfs::AbstractIRF) = irfs.lower
 lower(irfs::StaticIRF, impulse, response) = @view lower(irfs)[impulse..., response..., :]
 lower(irfs::DynamicIRF, response) = @view lower(irfs)[response..., :]
-lower(irfs::DynamicIRF, response) = @view lower(irfs)[response..., :]
 upper(irfs::AbstractIRF) = irfs.upper
 upper(irfs::StaticIRF, impulse, response) = @view upper(irfs)[impulse..., response..., :]
-upper(irfs::DynamicIRF, response) = @view upper(irfs)[response..., :]
 upper(irfs::DynamicIRF, response) = @view upper(irfs)[response..., :]
