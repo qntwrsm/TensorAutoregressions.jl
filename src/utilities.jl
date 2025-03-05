@@ -15,13 +15,12 @@ utilities.jl
     confidence_bounds(model, periods, α, orth, samples=100, burn=100, rng=Xoshiro())
         -> (lower, upper)
 
-Compute Monte Carlo `α`% confidence bounds for impulse response functions of the tensor
-autoregressive model given by `model`. The confidence bounds are estimated using a Monte
-Carlo simulation with `samples` and a burn-in period `burn`.
+Compute Monte Carlo `α`% confidence bounds for impulse response functions of the static
+tensor autoregressive model given by `model`. The confidence bounds are estimated using a
+Monte Carlo simulation with `samples` and a burn-in period `burn`.
 """
-#TODO Adjust confidence bounds calculation of IRFs of static model to accomodate generalized IRFs
-function confidence_bounds(model::StaticTensorAutoregression, periods::Integer, α::Real,
-                           orth::Bool, samples::Integer = 100, burn::Integer = 100,
+function confidence_bounds(model::StaticTensorAutoregression, periods::Integer, α::Real;
+                           samples::Integer = 100, burn::Integer = 100,
                            rng::AbstractRNG = Xoshiro())
     Ψ = Vector{Array}(undef, samples)
 
@@ -36,8 +35,8 @@ function confidence_bounds(model::StaticTensorAutoregression, periods::Integer, 
         # moving average representation
         Ψ[s] = moving_average(sim, periods)
 
-        # orthogonalize
-        orth ? Ψ[s] = orthogonalize(Ψ[s], cov(sim)) : nothing
+        # girf
+        Ψ[s] = integrate(Ψ[s], cov(sim))
     end
 
     # quantiles
@@ -175,7 +174,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     # sample paths
     paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
-        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+        path_sampler!(conditional_paths, model,
+                      selectdim(particles, ndims(particles) - 1, t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),
                       conditional[t])
@@ -199,7 +199,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     # sample paths
     paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
-        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+        path_sampler!(conditional_paths, model,
+                      selectdim(particles, ndims(particles) - 1, t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),
                       conditional[t])
