@@ -174,7 +174,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     # sample paths
     paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
-        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+        path_sampler!(conditional_paths, model,
+                      selectdim(particles, ndims(particles) - 1, t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),
                       conditional[t])
@@ -198,7 +199,8 @@ function sampler(model::DynamicTensorAutoregression, samples::Integer, periods::
     # sample paths
     paths = similar(data(model), d..., periods, length(conditional), samples)
     for (t, conditional_paths) in pairs(eachslice(paths, dims = ndims(paths) - 1))
-        path_sampler!(conditional_paths, model, selectdim(particles, ndims(particles), t),
+        path_sampler!(conditional_paths, model,
+                      selectdim(particles, ndims(particles) - 1, t),
                       selectdim(noise, n + 1,
                                 ((t - 1) * samples * periods + 1):(t * samples * periods)),
                       conditional[t])
