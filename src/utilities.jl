@@ -12,7 +12,7 @@ utilities.jl
 =#
 
 """
-    confidence_bounds(model, periods, α, orth, samples=100, burn=100, rng=Xoshiro())
+    confidence_bounds(model, periods, α, samples=100, burn=100, rng=Xoshiro())
         -> (lower, upper)
 
 Compute Monte Carlo `α`% confidence bounds for impulse response functions of the static
