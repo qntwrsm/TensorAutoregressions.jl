@@ -175,7 +175,7 @@ struct StaticTensorAutoregression{Ty <: AbstractArray,
     function StaticTensorAutoregression(y::AbstractArray,
                                         ε::AbstractTensorErrorDistribution,
                                         A::AbstractVector)
-        di = size(y)
+        d = size(y)
         n = ndims(y) - 1
         if ε isa WhiteNoise
             prod(d[1:n]) == size(cov(ε), 1) ||
