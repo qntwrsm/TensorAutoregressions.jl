@@ -10,8 +10,6 @@ plotting.jl
 @date: 2023/04/04
 =#
 
-#TODO Check code for all plot methods and whether still correct for general lag P rank Rp structure
-
 """
     data_plot(model[, labels, time]) -> fig
 
@@ -19,63 +17,76 @@ Plot the time series data, with optionally specified `labels` and `time` index.
 """
 function data_plot(model::AbstractTensorAutoregression)
     d = dims(model)
-    n = length(d)
 
     # sort modes
-    maxmode = argmax(d)
-    m = setdiff(1:n, maxmode)
+    order = sortperm(collect(d), rev = true)
 
     # setup subplots
-    cols = iseven(d[maxmode]) ? 2 : 3
-    rows = ceil(Int, d[maxmode] / cols)
-    indices = CartesianIndices((rows, cols))
+    cols = ceil(Int, sqrt(d[order[1]]))
+    rows = ceil(Int, d[order[1]] / cols)
 
     # setup figure
-    fig = Figure(resolution = (cols * 800, cols * 600))
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:d[maxmode]]]
-    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:last(d)]
+    fig = Figure(size = (cols * 600, cols * 450))
+    grids = [GridLayout(fig[row, col]) for row in 1:rows
+             for col in 1:cols if (row - 1) * cols + col <= d[order[1]]]
+    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:d[order[2]]]
 
     # layout
     for grid in grids
-        colgap!(grid, 0)
-        rowgap!(grid, 0)
+        colgap!(grid, 5)
+        rowgap!(grid, 5)
     end
 
     # link axes
     linkxaxes!(axs...)
-    for i in 1:last(d)
-        linkyaxes!(axs[:, i]...)
+    for col in eachcol(axs)
+        linkyaxes!(col...)
     end
 
     # decorations
-    for i in 1:d[maxmode]
-        axs[i, end].xlabel = "time"
-        axs[i, end].xticks = (ticks, values)
+    for row in eachrow(axs)
+        row[end].xlabel = "time"
     end
     hidexdecorations!.(axs[:, 1:(end - 1)], grid = false)
-    hideydecorations!.(axs[(rows + 1):end, :], grid = false)
+    for (i, row) in pairs(eachrow(axs))
+        if (i - 1) % cols != 0
+            hideydecorations!.(row, grid = false)
+        end
+    end
 
     # data
-    colors = resample_cmap(:viridis, prod(d[m]))
+    ncolors = length(d) > 2 ? prod(d[order[3:end]]) : 2
+    colors = resample_cmap(:viridis, ncolors)
     for (idx, ax) in pairs(IndexCartesian(), axs)
-        y = selectdim(data(model), maxmode, idx[1])
-        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, nobs(model)), color = colors)
+        # identify 2nd largest mode
+        k = order[2] - (order[1] < order[2] ? 1 : 0)
+        # select largest and 2nd largest modes
+        y = selectdim(selectdim(data(model), order[1], idx[1]), k, idx[2])
+        # sort modes
+        y_sorted = length(d) > 2 ? permutedims(y, order[3:end]) : y
+        # plot
+        series!(ax, reshape(y_sorted, :, nobs(model)), color = colors,
+                labels = sub_labels)
     end
 
     return fig
 end
 function data_plot(model::AbstractTensorAutoregression, labels, time)
     d = dims(model)
-    n = length(d)
 
     # sort modes
-    maxmode = argmax(d)
-    m = setdiff(1:n, maxmode)
+    order = sortperm(collect(d), rev = true)
 
     # combine time series labels
-    sub_labels = labels[m[1]]
-    for mode in m[2:end]
-        sub_labels = vec(sub_labels .* " - " .* reshape(labels[mode], 1, :))
+    if length(d) > 2
+        sub_labels = labels[order[3]]
+        if length(d) > 3
+            for mode in order[4:end]
+                sub_labels = vec(sub_labels .* " - " .* reshape(labels[mode], 1, :))
+            end
+        end
+    else
+        sub_labels = nothing
     end
 
     # time ticks
@@ -83,61 +94,76 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
     ticks = [findfirst(string.(year.(time)) .== value) for value in values]
 
     # setup subplots
-    cols = iseven(d[maxmode]) ? 2 : 3
-    rows = ceil(Int, d[maxmode] / cols)
-    indices = CartesianIndices((rows, cols))
+    cols = ceil(Int, sqrt(d[order[1]]))
+    rows = ceil(Int, d[order[1]] / cols)
 
     # setup figure
-    fig = Figure(resolution = (cols * 800, cols * 600))
-    grids = [GridLayout(fig[Tuple(idx)...]) for idx in indices[1:d[maxmode]]]
-    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:last(d)]
+    fig = Figure(size = (cols * 600, cols * 450))
+    grids = [GridLayout(fig[row, col]) for row in 1:rows
+             for col in 1:cols if (row - 1) * cols + col <= d[order[1]]]
+    axs = [Axis(grid[i, 1]) for grid in grids, i in 1:d[order[2]]]
 
     # layout
     for grid in grids
-        colgap!(grid, 0)
-        rowgap!(grid, 0)
+        colgap!(grid, 5)
+        rowgap!(grid, 5)
     end
 
     # link axes
     linkxaxes!(axs...)
-    for i in 1:last(d)
-        linkyaxes!(axs[:, i]...)
+    for col in eachcol(axs)
+        linkyaxes!(col...)
     end
 
     # decorations
-    for i in 1:d[maxmode], j in 1:last(d)
-        axs[i, j].xlabel = "time"
-        axs[i, j].xticks = (ticks, values)
+    for row in eachrow(axs)
+        row[end].xlabel = "time"
+        row[end].xticks = (ticks, values)
     end
     hidexdecorations!.(axs[:, 1:(end - 1)], grid = false)
-    hideydecorations!.(axs[(rows + 1):end, :], grid = false)
+    for (i, row) in pairs(eachrow(axs))
+        if (i - 1) % cols != 0
+            hideydecorations!.(row, grid = false)
+        end
+    end
 
     # grid titles
     for (i, grid) in pairs(grids)
-        Label(grid[1, :, Top()], labels[maxmode][i], valign = :bottom, font = :bold)
+        Label(grid[1, :, Top()], labels[order[1]][i], valign = :bottom, font = :bold)
     end
     # axis titles
-    for grid in grids[(end - rows + 1):end]
-        for (i, label) in pairs(labels[end])
-            Box(grid[i, 2], color = :gray90)
-            Label(grid[i, 2], label, rotation = π / 2, tellheight = false)
+    for (i, grid) in pairs(grids)
+        if i % cols == 0 || i == length(grids)
+            for (j, label) in pairs(labels[order[2]])
+                Box(grid[j, 2], color = :gray90)
+                Label(grid[j, 2], label, rotation = π / 2, tellheight = false)
+            end
+            colgap!(grid, 0)
         end
-        colgap!(grid, 0)
     end
 
     # data
-    colors = resample_cmap(:viridis, prod(d[m]))
+    ncolors = length(d) > 2 ? prod(d[order[3:end]]) : 2
+    colors = resample_cmap(:viridis, ncolors)
     for (idx, ax) in pairs(IndexCartesian(), axs)
-        y = selectdim(data(model), maxmode, idx[1])
-        series!(ax, reshape(selectdim(y, n - 1, idx[2]), :, nobs(model)), color = colors,
+        # identify 2nd largest mode
+        k = order[2] - (order[1] < order[2] ? 1 : 0)
+        # select largest and 2nd largest modes
+        y = selectdim(selectdim(data(model), order[1], idx[1]), k, idx[2])
+        # sort modes
+        y_sorted = length(d) > 2 ? permutedims(y, order[3:end]) : y
+        # plot
+        series!(ax, reshape(y_sorted, :, nobs(model)), color = colors,
                 labels = sub_labels)
     end
 
     # add legend
-    if d[maxmode] == length(indices)
-        Legend(fig[:, cols + 1], axs[1], "sectors")
-    else
-        Legend(fig[rows, cols], axs[1], "sectors", tellwidth = false, halign = :left)
+    if length(d) > 2
+        if d[order[1]] == cols * rows
+            Legend(fig[:, cols + 1], axs[1])
+        else
+            Legend(fig[rows, cols], axs[1], tellwidth = false, halign = :left)
+        end
     end
 
     return fig
@@ -154,7 +180,7 @@ function kruskal_plot(A::StaticKruskal)
     n = length(d) ÷ 2
 
     # setup figure
-    fig = Figure(resolution = (1600, 1600))
+    fig = Figure(size = (prod(d[1:n]) * 20 + 200, prod(d[1:n]) * 20))
     ax = Axis(fig[1, 1])
 
     # Kruskal coefficient tensor factors and static loadings
@@ -168,7 +194,7 @@ function kruskal_plot(A::StaticKruskal, labels)
     n = length(d) ÷ 2
 
     # setup figures
-    fig = Figure(resolution = (1600, 1600))
+    fig = Figure(size = (prod(d[1:n]) * 20 + 200, prod(d[1:n]) * 20))
     # main grids
     gl = GridLayout(fig[1, 1])  # left label grid
     gb = GridLayout(fig[2, 2])  # bottom label grid
@@ -178,10 +204,8 @@ function kruskal_plot(A::StaticKruskal, labels)
     ax = Axis(gm[1, 1])
 
     # label grids
-    for i in 1:d[n]
-        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
-    end
+    nested_labels!(gl, d[1:n], n, labels, :left)
+    nested_labels!(gb, d[1:n], n, labels, :bottom)
 
     # Kruskal coefficient tensor
     hm = heatmap!(ax, matricize(full(A), (n + 1):(2 * n))')
@@ -198,15 +222,22 @@ function kruskal_plot(A::DynamicKruskal)
     n = length(d) ÷ 2
 
     # setup figures
-    figs = [Figure(resolution = (1600, 1600)), Figure()]
+    figs = [Figure(size = (prod(d[1:n]) * 20 + 200, prod(d[1:n]) * 20)) for _ in 1:rank(A)]
+    push!(figs, Figure())
     axs = [Axis(fig[1, 1]) for fig in figs]
 
     # Kruskal coefficient tensor factors
-    hm = heatmap!(axs[1], matricize(full(A), (n + 1):(2n))')
-    Colorbar(figs[1][1, 2], hm)
+    for r in 1:rank(A)
+        hm = heatmap!(axs[r], matricize(full(A)[r], (n + 1):(2n))')
+        Colorbar(figs[r][1, 2], hm)
+    end
 
     # dynamic Kruskal loadings
-    series!(axs[2], loadings(A), color = :viridis)
+    colors = resample_cmap(:viridis, max(rank(A), 2))
+    series!(axs[end], loadings(A), color = colors, labels = ["rank $r" for r in 1:rank(A)])
+
+    # add legend
+    Legend(figs[end][1, 2], axs[end])
 
     return figs
 end
@@ -215,37 +246,47 @@ function kruskal_plot(A::DynamicKruskal, labels, time)
     n = length(d) ÷ 2
 
     # setup figures
-    figs = [Figure(resolution = (1600, 1600)), Figure()]
+    figs = [Figure(size = (prod(d[1:n]) * 20 + 200, prod(d[1:n]) * 20)) for _ in 1:rank(A)]
+    push!(figs, Figure())
     # main grids
-    gl = GridLayout(figs[1][1, 1])  # left label grid
-    gb = GridLayout(figs[1][2, 2])  # bottom label grid
-    gm = GridLayout(figs[1][1, 2])  # main plotting grid
-    gc = GridLayout(figs[1][1, 3])  # colorbar grid
+    gl = [GridLayout(figs[r][1, 1]) for r in 1:rank(A)]  # left label grid
+    gb = [GridLayout(figs[r][2, 2]) for r in 1:rank(A)]  # bottom label grid
+    gm = [GridLayout(figs[r][1, 2]) for r in 1:rank(A)]  # main plotting grid
+    gc = [GridLayout(figs[r][1, 3]) for r in 1:rank(A)]  # colorbar grid
     # plotting axes
-    axs = [Axis(gm[1, 1]), Axis(figs[2][1, 1])]
+    axs = [Axis(gm[r][1, 1]) for r in 1:rank(A)]
+    push!(axs, Axis(figs[end][1, 1]))
 
     # label grids
-    for i in 1:d[n]
-        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
+    for r in 1:rank(A)
+        nested_labels!(gl[r], d[1:n], n, labels, :left)
+        nested_labels!(gb[r], d[1:n], n, labels, :bottom)
     end
 
     # Kruskal coefficient tensor factors
-    hm = heatmap!(axs[1], matricize(full(A), (n + 1):(2n))')
-    Colorbar(gc[1, 1], hm)
+    for r in 1:rank(A)
+        hm = heatmap!(axs[r], matricize(full(A)[r], (n + 1):(2n))')
+        Colorbar(gc[r][1, 1], hm)
+    end
 
     # ticks
-    axs[1].xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
-    axs[1].yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    for r in 1:rank(A)
+        axs[r].xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+        axs[r].yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    end
 
     # dynamic Kruskal loadings
-    series!(axs[2], loadings(A), color = :viridis)
+    colors = resample_cmap(:viridis, max(rank(A), 2))
+    series!(axs[end], loadings(A), color = colors, labels = ["rank $r" for r in 1:rank(A)])
 
     # time ticks
     values = string.(unique(year.(time))[1:5:end])
     ticks = [findfirst(string.(year.(time)) .== value) for value in values]
-    axs[2].xlabel = "time"
-    axs[2].xticks = (ticks, values)
+    axs[end].xlabel = "time"
+    axs[end].xticks = (ticks, values)
+
+    # add legend
+    Legend(figs[end][1, 2], axs[end])
 
     return figs
 end
@@ -256,8 +297,10 @@ end
 Plot the tensor error covariance structure `ε` with optionally specified `labels`.
 """
 function cov_plot(ε::AbstractTensorErrorDistribution)
+    d = size.(cov(ε), 1)
+
     # setup figure
-    fig = Figure(resolution = (1600, 1600))
+    fig = Figure(size = (prod(d) * 20 + 200, prod(d) * 20))
     ax = Axis(fig[1, 1])
 
     # covariance matrix
@@ -271,7 +314,7 @@ function cov_plot(ε::AbstractTensorErrorDistribution, labels)
     n = length(d)
 
     # setup figures
-    fig = Figure(resolution = (1600, 1600))
+    fig = Figure(size = (prod(d) * 20 + 200, prod(d) * 20))
     # main grids
     gl = GridLayout(fig[1, 1])  # left label grid
     gb = GridLayout(fig[2, 2])  # bottom label grid
@@ -281,77 +324,73 @@ function cov_plot(ε::AbstractTensorErrorDistribution, labels)
     ax = Axis(gm[1, 1])
 
     # label grids
-    for i in 1:d[n]
-        nested_labels!(GridLayout(gl[i, 1]), d, n, i, labels, :left)
-        nested_labels!(GridLayout(gb[1, i]), d, n, i, labels, :bottom)
-    end
+    nested_labels!(gl, d, n, labels, :left)
+    nested_labels!(gb, d, n, labels, :bottom)
 
     # covariance matrix
     hm = heatmap!(ax, cov(ε, full = true)')
     Colorbar(gc[1, 1], hm)
 
     # ticks
-    ax.xticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
-    ax.yticks = (1:prod(d[1:n]), repeat(labels[1], prod(d[2:n])))
+    ax.xticks = (1:prod(d), repeat(labels[1], prod(d[2:n])))
+    ax.yticks = (1:prod(d), repeat(labels[1], prod(d[2:n])))
 
     return fig
 end
 
 """
-    nested_labels!(grid, d, n, i, labels, loc)
+    nested_labels!(grid, d, n, labels, loc)
 
-Add recursively nested `i`-th label from `n`nd level from `labels` to a grid layout `grid`
+Add recursively nested labels from `n`nd level from `labels` to a grid layout `grid`
 with dimensions `d` for the levels and `loc` indicating the location of the labels.
 """
-function nested_labels!(grid, dims, n, i, labels, loc)
+function nested_labels!(grid, d, n, labels, loc)
     # terminate at final to last level (last level are axis ticks)
     if n == 2
-        for j in 1:dims[n]
+        for i in 1:d[n]
             # add all remaining labels
             if loc == :bottom
-                Box(grid[1, j])
-                Label(grid[1, j], labels[n][j], tellwidth = false)
+                Box(grid[1, i])
+                Label(grid[1, i], labels[n][i], tellwidth = false)
             elseif loc == :left
-                Box(grid[j, 1])
-                Label(grid[j, 1], reverse(labels[n])[j], rotation = π / 2,
+                Box(grid[i, 1])
+                Label(grid[i, 1], reverse(labels[n])[i], rotation = π / 2,
                       tellheight = false)
             end
         end
     else
-        # first subgrid
-        ga = loc == :left ? GridLayout(grid[1, 1]) : GridLayout(grid[2, 1])
-        Box(ga[1, 1])
-        # add label of current level
-        if loc == :bottom
-            Label(ga[1, 1], labels[n][i], tellwidth = false)
-        elseif loc == :left
-            Label(ga[1, 1], reverse(labels[n])[i], rotation = π / 2, tellheight = false)
-        end
-        # second subgrid (will be recursively filled with new level)
-        gb = loc == :left ? GridLayout(grid[1, 2]) : GridLayout(grid[1, 1])
-        for j in 1:dims[n - 1]
-            nested_labels!(gb, dims, n - 1, j, labels, loc)
+        for i in 1:d[n]
+            # subgrid
+            g = loc == :left ? GridLayout(grid[length(d) - n + 1, 1]) :
+                GridLayout(grid[n, 1])
+            Box(g[1, 1])
+            # add label of current level
+            if loc == :bottom
+                Label(g[1, 1], labels[n][i], tellwidth = false)
+            elseif loc == :left
+                Label(g[1, 1], reverse(labels[n])[i], rotation = π / 2, tellheight = false)
+            end
+            # move to next level
+            nested_labels!(grid, d, n - 1, labels, loc)
         end
     end
 end
 
 """
-    irf_plot(irfs, impulse, response[, time]) -> fig
+    irf_plot(irfs, response[, impulse]) -> fig
 
-Plot the impulse response function `irfs` for the response `response` to the impulse
-`impulse`. When `irfs` is dynamic `time` can be provided to plot the impulse response
-function for a specific time period.
+Plot the impulse response function `irfs` for the response `response`, when `irfs` is
+dynamic an `impulse` can be provided.
 """
-function irf_plot(irfs::StaticIRF, impulse, response)
+function irf_plot(irfs::StaticIRF, response, impulse)
     ψ = irf(irfs, impulse, response)
     periods = length(ψ) - 1
 
     # setup figure
     fig = Figure()
-    ax = Axis(fig[1, 1],
-              title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                      "Impulse Response Function", titlealign = :left, titlecolor = :gray50,
-              xlabel = "periods", xticks = (0:periods, ["$h" for h in 0:periods]))
+    ax = Axis(fig[1, 1], title = "Generalized Impulse Response Function",
+              titlealign = :left, titlecolor = :gray50, xlabel = "periods",
+              xticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
     lines!(ax, 0:periods, ψ, color = :black)
@@ -364,60 +403,23 @@ function irf_plot(irfs::StaticIRF, impulse, response)
 
     return fig
 end
-function irf_plot(irfs::DynamicIRF, impulse, response)
-    ψ = irf(irfs, impulse, response)
-    periods = size(ψ, 1) - 1
-    time = size(ψ, 2)
-
-    # setup figure
-    fig = Figure()
-    ax = Axis3(fig[1, 1], azimuth = π / 4,
-               title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                       "Impulse Response Function", titlealign = :left,
-               titlecolor = :gray50, xlabel = "time", ylabel = "periods",
-               yticks = (0:periods, ["$h" for h in 0:periods]))
-
-    # impulse response function
-    surface!(ax, 1:time, 0:periods, ψ')
-
-    return fig
-end
-function irf_plot(irfs::DynamicIRF, impulse, response, time)
-    ψ = irf(irfs, impulse, response, time)
-    periods = size(ψ, 1) - 1
-
-    # setup figure
-    fig = Figure()
-    ax = Axis3(fig[1, 1], azimuth = π / 4,
-               title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                       "Impulse Response Function", titlealign = :left,
-               titlecolor = :gray50, xlabel = "time", ylabel = "periods",
-               yticks = (0:periods, ["$h" for h in 0:periods]))
-
-    # impulse response function
-    surface!(ax, time, 0:periods, ψ')
-
-    return fig
-end
-function irf_plot(irfs::DynamicIRF, impulse, response, time::Integer)
-    ψ = irf(irfs, impulse, response, time)
+function irf_plot(irfs::DynamicIRF, response)
+    ψ = irf(irfs, response)
     periods = length(ψ) - 1
 
     # setup figure
     fig = Figure()
     ax = Axis(fig[1, 1],
-              title = orth(irfs) ? "Orthogonal Impulse Response Function" :
-                      "Impulse Response Function", titlealign = :left, titlecolor = :gray50,
-              xlabel = "periods", xticks = (0:periods, ["$h" for h in 0:periods]))
+              title = "Generalized Impulse Response Function", titlealign = :left,
+              titlecolor = :gray50, xlabel = "periods",
+              xticks = (0:periods, ["$h" for h in 0:periods]))
 
     # impulse response function
     lines!(ax, 0:periods, ψ, color = :black)
 
     # confidence bands
-    lines!(ax, 0:periods, lower(irfs, impulse, response, time),
-           color = :gray50, linestyle = :dash)
-    lines!(ax, 0:periods, upper(irfs, impulse, response, time),
-           color = :gray50, linestyle = :dash)
+    lines!(ax, 0:periods, lower(irfs, response), color = :gray50, linestyle = :dash)
+    lines!(ax, 0:periods, upper(irfs, response), color = :gray50, linestyle = :dash)
 
     return fig
 end
