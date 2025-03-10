@@ -61,15 +61,14 @@ computed up to the `n`th term.
 function moving_average(model::StaticTensorAutoregression, n::Integer)
     d = dims(model)
     nd = length(d)
-    m = (nd + 1):(2nd)
-    K = prod(d[m])
+    K = prod(d)
     Ty = eltype(data(model))
 
     # identity matrix
     Id = I(K)
 
     # matricize Kruskal tensor
-    Am = matricize.(full.(coef(model)), Ref(m))
+    Am = matricize.(full.(coef(model)), Ref(1:nd))
 
     # moving average coefficients
     Ψm = zeros(Ty, K, K, n + 1)
@@ -87,7 +86,7 @@ function moving_average(model::StaticTensorAutoregression, n::Integer)
         end
     end
 
-    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(m), Ref((d..., d...))),
+    return stack(tensorize.(eachslice(Ψm, dims = ndims(Ψm)), Ref(1:nd), Ref((d..., d...))),
                  dims = 2nd + 1)
 end
 
