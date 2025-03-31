@@ -258,7 +258,7 @@ function particle_sampler(model::DynamicTensorAutoregression, periods::Integer,
     # state transition parameters
     (c, T, Q) = state_transition_params(model)
     # filter
-    (a, P, _, _, _) = filter(model, predict = true)
+    (a, P, _, _) = filter(model, predict = true)
     a_hat = a[conditional - lags(model) + 1]
     P_hat = P[conditional - lags(model) + 1]
 
@@ -281,7 +281,7 @@ function particle_sampler(model::DynamicTensorAutoregression, periods::Integer,
     # state transition parameters
     (c, T, Q) = state_transition_params(model)
     # filter
-    (a, P, _, _, _) = filter(model, predict = true)
+    (a, P, _, _) = filter(model, predict = true)
 
     # particle sampling
     particles = similar(a[1], length(a[1]), periods, length(conditional), samples)
@@ -392,12 +392,11 @@ function collapse(model::DynamicTensorAutoregression; objective::Bool = false)
 end
 
 """
-    filter(model; predict = false) -> (a, P, v, F, K)
+    filter(model; predict = false) -> (a, P, v, F)
 
 Collapsed Kalman filter for the dynamic tensor autoregressive model `model`. Returns the
-filtered state `a`, covariance `P`, forecast error `v`, forecast error variance `F`, and
-Kalman gain `K`. If `predict` is `true` the filter reports the one-step ahead out-of-sample
-prediction.
+filtered state `a`, covariance `P`, forecast error `v`, and forecast error variance `F`. If
+`predict` is `true` the filter reports the one-step ahead out-of-sample prediction.
 """
 function filter(model::DynamicTensorAutoregression; predict::Bool = false)
     # collapsed state space system
@@ -411,7 +410,11 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
     P = similar(y, typeof(P1), n)
     v = similar(y)
     F = similar(y, typeof(P1))
-    K = similar(y, typeof(P1))
+
+    # initialize storage
+    ZtFinv = similar(P1)
+    att = similar(a1)
+    Ptt = similar(P1)
 
     # initialize filter
     a[1] = a1
@@ -423,21 +426,25 @@ function filter(model::DynamicTensorAutoregression; predict::Bool = false)
         v[t] = y[t] - Z[t] * a[t]
         F[t] = Z[t] * P[t] * Z[t]' + H[t]
 
-        # Kalman gain
-        K[t] = T * P[t] * (F[t] \ Z[t])'
+        # update
+        ZtFinv .= (F[t] \ Z[t])'
+        att .= a[t] + P[t] * ZtFinv * v[t]
+        Ptt .= P[t] - P[t] * ZtFinv * Z[t] * P[t]
 
         # prediction
         if predict || t < length(y)
-            a[t + 1] = T * a[t] + K[t] * v[t] + c
-            P[t + 1] = T * P[t] * (T - K[t] * Z[t])' + Q
+            a[t + 1] = T * att + c
+            P[t + 1] = T * Ptt * T' + Q
+            # enforce symmetry for numerical stability
+            P[t + 1] = 0.5 * (P[t + 1] + P[t + 1]')
         end
     end
 
-    return (a, P, v, F, K)
+    return (a, P, v, F)
 end
 
 """
-    _filter_smoother(y, Z, H, c, T, Q, a1, P1) -> (a, P, v, ZtFinv, K)
+    _filter_smoother(y, Z, H, c, T, Q, a1, P1) -> (a, P, v, ZtFinv)
 
 Collapsed Kalman filter for the dynamic tensor autoregressive model used internally by the
 `smoother` routine to avoid duplicate expensive computation of state space system matrices.
@@ -448,10 +455,11 @@ function _filter_smoother(y, Z, H, c, T, Q, a1, P1)
     P = similar(y, typeof(P1))
     v = similar(y)
     ZtFinv = similar(y, typeof(P1))
-    K = similar(y, typeof(P1))
 
     # initialize storage
     F = similar(P1)
+    att = similar(a1)
+    Ptt = similar(P1)
 
     # initialize filter
     a[1] = a1
@@ -463,14 +471,17 @@ function _filter_smoother(y, Z, H, c, T, Q, a1, P1)
         v[t] = y[t] - Z[t] * a[t]
         F .= Z[t] * P[t] * Z[t]' + H[t]
 
-        # Kalman gain
+        # update
         ZtFinv[t] = (F \ Z[t])'
-        K[t] = T * P[t] * ZtFinv[t]
+        att .= a[t] + P[t] * ZtFinv[t] * v[t]
+        Ptt .= P[t] - P[t] * ZtFinv[t] * Z[t] * P[t]
 
         # prediction
         if t < length(y)
-            a[t + 1] = T * a[t] + K[t] * v[t] + c
-            P[t + 1] = T * P[t] * (T - K[t] * Z[t])' + Q
+            a[t + 1] = T * att + c
+            P[t + 1] = T * Ptt * T' + Q
+            # enforce symmetry for numerical stability
+            P[t + 1] = 0.5 * (P[t + 1] + P[t + 1]')
         end
     end
 
@@ -490,7 +501,9 @@ function _filter_likelihood(y, Z, H, c, T, Q, a1, P1)
     F = similar(y, typeof(P1))
 
     # initialize storage
-    K = similar(P1)
+    ZtFinv = similar(P1)
+    att = similar(a1)
+    Ptt = similar(P1)
 
     # initialize filter
     a = copy(a1)
@@ -502,13 +515,17 @@ function _filter_likelihood(y, Z, H, c, T, Q, a1, P1)
         v[t] = y[t] - Z[t] * a
         F[t] = Z[t] * P * Z[t]' + H[t]
 
-        # Kalman gain
-        K .= T * P * (F[t] \ Z[t])'
+        # update
+        ZtFinv .= (F[t] \ Z[t])'
+        att .= a + P * ZtFinv * v[t]
+        Ptt .= P - P * ZtFinv * Z[t] * P
 
         # prediction
         if t < length(y)
-            a .= T * a + K * v[t] + c
-            P .= T * P * (T - K * Z[t])' + Q
+            a .= T * att + c
+            P = T * Ptt * T' + Q
+            # enforce symmetry for numerical stability
+            P = 0.5 * (P + P')
         end
     end
 
@@ -528,7 +545,7 @@ function smoother(model::DynamicTensorAutoregression)
     (a1, P1) = state_space_init(model)
 
     # filter
-    (a, P, v, ZtFinv, K) = _filter_smoother(y, Z, H, c, T, Q, a1, P1)
+    (a, P, v, ZtFinv) = _filter_smoother(y, Z, H, c, T, Q, a1, P1)
 
     # initialize smoother output
     α = similar(a)
@@ -542,7 +559,7 @@ function smoother(model::DynamicTensorAutoregression)
 
     # smoother
     for t in reverse(eachindex(y))
-        L .= T - K[t] * Z[t]
+        L .= T - T * P[t] * ZtFinv[t] * Z[t]
 
         # backward recursion
         r .= ZtFinv[t] * v[t] + L' * r
