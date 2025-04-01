@@ -196,6 +196,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     N = prod(d)
     kruskal_shape = (d..., d...)
     Rc = cumsum(rank(model))
+    ntrials = 1000
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
@@ -207,28 +208,25 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     x = vcat(reshape.(y_lags, :, nobs(model) - lags(model))...)
 
     if method == :data
-        # ridge regression
-        F = hessenberg(x * x')
-        M = z * x'
-        # gridsearch
-        γ = exp10.(range(0, 3, length = 100))
-        β = similar(γ, typeof(M))
-        bic = similar(γ)
-        for (i, γi) in pairs(γ)
-            β[i] = M / (F + γi * I)
-            rss = norm(z - β[i] * x)^2
-            df = tr(x' / (F + γi * I) * x)
-            bic[i] = (nobs(model) - lags(model)) *
-                     log(rss * inv(nobs(model) - lags(model))) +
-                     df * log(nobs(model) - lags(model))
-        end
-        # optimal
-        β_star = β[argmin(bic)]
-        B = [tensorize(β_star[:, ((p - 1) * N + 1):(p * N)], (n + 1):(2n), kruskal_shape)
+        # linear regression
+        β = z / x
+        B = [tensorize(β[:, ((p - 1) * N + 1):(p * N)], (n + 1):(2n), kruskal_shape)
              for p in 1:lags(model)]
 
         # CP decomposition
-        Astatic = [cp(B[p], Rp) for (p, Rp) in pairs(rank(model))]
+        Astatic = []
+        for (p, Rp) in pairs(rank(model))
+            # run multiple trials to smooth out initialization effects
+            (opt_trial, opt_obj) = cp(B[p], Rp)
+            for _ in 1:(ntrials - 1)
+                (trial, obj_trial) = cp(B[p], Rp)
+                if obj_trial > opt_obj
+                    opt_trial = trial
+                    opt_obj = obj_trial
+                end
+            end
+            push!(Astatic, opt_trial)
+        end
     end
     # factors
     if method == :data
@@ -269,9 +267,18 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
 
         # transition dynamics
         for Ap in coef(model)
-            dynamics(Ap).diag .= 0.5
-            intercept(Ap) .= 0.0
-            cov(Ap).diag .= 1.0
+            for r in 1:rank(Ap)
+                y = loadings(Ap)[r, 2:end]
+                x = hcat(loadings(Ap)[r, 1:end-1], ones(length(y)))
+
+                # linear regression
+                β = x \ y
+                resid = y - x * β
+
+                dynamics(Ap).diag[r] = β[1]
+                intercept(Ap)[r] = β[2]
+                cov(Ap).diag[r] = var(resid)
+            end
         end
     end
 
