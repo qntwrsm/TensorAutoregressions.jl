@@ -485,7 +485,7 @@ function _filter_smoother(y, Z, H, c, T, Q, a1, P1)
         end
     end
 
-    return (a, P, v, ZtFinv, K)
+    return (a, P, v, ZtFinv)
 end
 
 """
