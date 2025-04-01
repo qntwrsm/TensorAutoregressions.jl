@@ -65,7 +65,7 @@ function (I::UniformScaling)(n::Integer, R::Integer)
 end
 
 """
-    cp(X, R; tolerance = 1e-4, max_iter = 1000) -> Xhat
+    cp(X, R; tolerance = 1e-4, max_iter = 1000) -> (Xhat, obj)
 
 Rank `R` CP-decomposition of a tensor `X` obtained using alternating least squares using a
 tolerance of `tolerance` and maximum number of iterations of `max_iter`.
@@ -122,5 +122,5 @@ function cp(X::AbstractArray, R::Integer; tolerance::AbstractFloat = 1e-4,
         iter += 1
     end
 
-    return Xhat
+    return (Xhat, obj)
 end
