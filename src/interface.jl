@@ -84,7 +84,7 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     U = outer.(coef(model))
 
     # burn-in
-    y_burn = similar(data(model), d..., burn + lags(model))
+    y_burn = similar(data(model), d..., burn)
     for (t, yt) in pairs(eachslice(y_burn, dims = n + 1))
         # errors
         yt .= selectdim(ε, n + 1, t)
@@ -99,15 +99,16 @@ function simulate(model::StaticTensorAutoregression; burn::Integer = 100,
     # simulate data
     y = similar(data(model))
     for (t, yt) in pairs(eachslice(y, dims = n + 1))
-        if t <= lags(model)
-            yt .= selectdim(y_burn, n + 1, burn + t)
-        else
-            # errors
-            yt .= selectdim(ε, n + 1, burn + t)
-            # autoregressive component
-            for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
-                yt .+= loadings(Ap)[r] .* tucker(selectdim(y, n + 1, t - p), U[p][r])
+        # errors
+        yt .= selectdim(ε, n + 1, burn + t)
+        # autoregressive component
+        for (p, Ap) in pairs(coef(model)), r in 1:rank(Ap)
+            if t <= p
+                ylag = selectdim(y_burn, n + 1, burn + t - p)
+            else
+                ylag = selectdim(y, n + 1, t - p)
             end
+            yt .+= loadings(Ap)[r] .* tucker(ylag, U[p][r])
         end
     end
 
@@ -160,9 +161,9 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
             if t <= p
                 ylag = selectdim(y_burn, n + 1, burn + t - p)
             else
-                ylag = tucker(selectdim(y, n + 1, t - p), U[p][r])
+                ylag = selectdim(y, n + 1, t - p)
             end
-            yt .+= λpr[burn - lags(model) + t] .* ylag
+            yt .+= λpr[burn - lags(model) + t] .* tucker(ylag, U[p][r])
         end
     end
 
@@ -222,7 +223,7 @@ function fit!(model::AbstractTensorAutoregression;
         obj = objective(model)
 
         # non-decrease violation
-        if obj - obj_prev < 0
+        if obj - obj_prev < -1e-4
             violation = true
             if verbose
                 println("Objective function value decreased from $iter to $(iter + 1).")
