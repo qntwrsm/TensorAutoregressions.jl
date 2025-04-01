@@ -63,10 +63,9 @@ function data_plot(model::AbstractTensorAutoregression)
         # select largest and 2nd largest modes
         y = selectdim(selectdim(data(model), order[1], idx[1]), k, idx[2])
         # sort modes
-        y_sorted = length(d) > 2 ? permutedims(y, order[3:end]) : y
+        y_sorted = length(d) > 3 ? permutedims(y, order[3:end]) : y
         # plot
-        series!(ax, reshape(y_sorted, :, nobs(model)), color = colors,
-                labels = sub_labels)
+        series!(ax, reshape(y_sorted, :, nobs(model)), color = colors)
     end
 
     return fig
@@ -151,7 +150,7 @@ function data_plot(model::AbstractTensorAutoregression, labels, time)
         # select largest and 2nd largest modes
         y = selectdim(selectdim(data(model), order[1], idx[1]), k, idx[2])
         # sort modes
-        y_sorted = length(d) > 2 ? permutedims(y, order[3:end]) : y
+        y_sorted = length(d) > 3 ? permutedims(y, order[3:end]) : y
         # plot
         series!(ax, reshape(y_sorted, :, nobs(model)), color = colors,
                 labels = sub_labels)
