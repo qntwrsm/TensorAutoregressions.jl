@@ -196,7 +196,6 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     N = prod(d)
     kruskal_shape = (d..., d...)
     Rc = cumsum(rank(model))
-    ntrials = 1000
 
     # lag and lead variables
     y_lead = selectdim(data(model), n + 1, (lags(model) + 1):nobs(model))
@@ -214,19 +213,7 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
              for p in 1:lags(model)]
 
         # CP decomposition
-        Astatic = []
-        for (p, Rp) in pairs(rank(model))
-            # run multiple trials to smooth out initialization effects
-            (opt_trial, opt_obj) = cp(B[p], Rp)
-            for _ in 1:(ntrials - 1)
-                (trial, obj_trial) = cp(B[p], Rp)
-                if obj_trial > opt_obj
-                    opt_trial = trial
-                    opt_obj = obj_trial
-                end
-            end
-            push!(Astatic, opt_trial)
-        end
+        Astatic = [cp(B[p], Rp)[1] for (p, Rp) in pairs(rank(model))]
     end
     # factors
     if method == :data
