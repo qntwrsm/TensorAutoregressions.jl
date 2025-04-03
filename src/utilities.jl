@@ -124,6 +124,76 @@ function integrate(Ψ::AbstractArray, Σ::AbstractVector)
 end
 
 """
+    companion(model[, t]) -> comp
+
+Companion form of tensor autoregressive model `model`, where in case of a dynamic model the
+companion form is obtained for time index `t`.
+"""
+function companion(model::StaticTensorAutoregression)
+    d = dims(model)
+    n = length(d)
+    D = prod(d)
+    K = lags(model) * D
+
+    # companion matrix
+    comp = zeros(K, K)
+    # add identity matrix on off-diagonal
+    idx = diagind(comp, D)
+    comp[idx] .= 1.0
+    # add coefficient tensors
+    for (p, Ap) in pairs(coef(model))
+        comp[1:D, ((p - 1) * D + 1):(p * D)] .= matricize(full(Ap), (n + 1):(2n))
+    end
+
+    return comp
+end
+function companion(model::DynamicTensorAutoregression, t::Integer)
+    d = dims(model)
+    n = length(d)
+    D = prod(d)
+    K = lags(model) * D
+
+    # companion matrix
+    comp = zeros(K, K)
+    # add identity matrix on off-diagonal
+    idx = diagind(comp, D)
+    comp[idx] .= 1.0
+    # add time varying coefficient tensors
+    for (p, Ap) in pairs(coef(model))
+        for (r, Apr) in pairs(full(Ap))
+            comp[1:D, ((p - 1) * D + 1):(p * D)] .+= loadings(Ap)[r, t - p + 1] .*
+                                                     matricize(Apr, (n + 1):(2n))
+        end
+    end
+
+    return comp
+end
+
+"""
+    lyaponov(model, m; samples = 250) -> γ
+
+Lyaponov exponent for dynamic tensor autoregressive model `model` for length `m` and using
+`samples` for the Monte Carlo estimate.
+"""
+function lyaponov(model::DynamicTensorAutoregression, m::Integer; samples::Integer = 250)
+    γ = zeros(m)
+    for _ in 1:samples
+        # simulate from model
+        sim = simulate(model)
+
+        # companion form
+        comp = [companion(sim, t) for t in (m + lags(model)):-1:(lags(model) + 1)]
+
+        # Lyaponov exponents
+        for i in 1:m
+            γ[i] += log(opnorm(prod(first(comp, i))))
+        end
+    end
+
+    return γ ./ samples
+end
+
+"""
     sampler(model, samples, periods, conditional[, shock, index], rng) -> paths
 
 Sample conditional paths from the model `periods` ahead conditional on `conditional` given
