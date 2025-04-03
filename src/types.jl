@@ -89,6 +89,10 @@ dynamics(A::DynamicKruskal) = A.ϕ
 cov(A::DynamicKruskal) = A.Σ
 dof(A::StaticKruskal) = rank(A) + sum(length, factors(A))
 dof(A::DynamicKruskal) = 3 * rank(A) + sum(length, factors(A))
+params(A::StaticKruskal) = vcat(vec.(factors(A))..., loadings(A))
+function params(A::DynamicKruskal)
+    vcat(vec.(factors(A))..., intercept(A), dynamics(A).diag, cov(A).diag)
+end
 
 # Tensor error distributions
 """
@@ -151,6 +155,8 @@ function concentration(ε::TensorNormal; full::Bool = false)
     end
 end
 dof(ε::AbstractTensorErrorDistribution) = (sum(length, cov(ε)) + sum(size.(cov(ε), 1))) / 2
+params(ε::WhiteNoise) = vec(cov(ε))
+params(ε::TensorNormal) = vcat(vec.(cov(ε))...)
 
 # Tensor autoreggresive model
 """
@@ -246,6 +252,9 @@ lags(model::AbstractTensorAutoregression) = length(coef(model))
 dims(model::AbstractTensorAutoregression) = Base.front(size(data(model)))
 nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
+function params(model::AbstractTensorAutoregression)
+    vcat(params.(coef(model))..., params(dist(model)))
+end
 
 # Impulse response functions
 """

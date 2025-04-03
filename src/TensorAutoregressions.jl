@@ -30,7 +30,7 @@ export
       TensorAutoregression,
 
 # interface methods
-## getters
+# getters
       data, coef, dist, lags, # general
       residuals, cov, # residuals
       factors, loadings, rank, intercept, dynamics, # Kruskal coefficient tensor
@@ -38,15 +38,18 @@ export
 # simulate
       simulate,
 
-## fit
+# stationarity
+      isstationary,
+
+# fit
       fit!,
       rss, loglikelihood,
       dof, nobs, aic, aicc, bic,
 
-## forecast
+# forecast
       forecast,
 
-## impulse response functions
+# impulse response functions
       irf,
       lower, upper, orth,
 

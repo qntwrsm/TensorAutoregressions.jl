@@ -171,13 +171,26 @@ function simulate(model::DynamicTensorAutoregression; burn::Integer = 100,
 end
 
 """
+    isstationary(model[, m = 100, samples = 250]) -> Bool
+
+Test whether a tensor autoregressive model is stationary. In case the model is dynamic
+stationarity is tested through the Lyaponov exponent.
+"""
+isstationary(model::StaticTensorAutoregression) = maximum(eigvals(companion(model)))
+function isstationary(model::DynamicTensorAutoregression; m::Integer = 100,
+                      samples::Integer = 250)
+    return any(γ -> γ < 0, lyaponov(model, m, samples = samples))
+end
+
+"""
     fit!(model; init_method=(coef=:data, dist=:data), tolerance=1e-4, max_iter=1000,
-         verbose=false) -> model
+         criteria=:objective, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with `tolerance` and
-maximum number of iterations `max_iter`. If `verbose` is true a summary of the model fitting
-is printed. `init_method` indicates which method is used for initialization of the
-parameters.
+maximum number of iterations `max_iter`. `criteria` determines the criteria for convergence
+and can be set to `:objective` for objective function value based or `:param` for parameter
+value based. If `verbose` is true a summary of the model fitting is printed. `init_method`
+indicates which method is used for initialization of the parameters.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
@@ -187,7 +200,9 @@ respectively white noise and tensor normal errors.
 function fit!(model::AbstractTensorAutoregression;
               init_method::NamedTuple = (coef = :data, dist = :data),
               tolerance::AbstractFloat = 1e-4, max_iter::Integer = 1000,
-              verbose::Bool = false)
+              criteria::Symbol = :objective, verbose::Bool = false)
+    criteria ∈ (:objective, :param) ||
+        error("convergence criteria must we either :objective or :param.")
     keys(init_method) ⊇ (:coef, :dist) ||
         error("init_method must be a NamedTuple with keys :coef and :dist.")
 
@@ -211,29 +226,45 @@ function fit!(model::AbstractTensorAutoregression;
 
     # alternating least squares
     iter = 0
-    obj = -Inf
     converged = false
-    violation = false
+    if criteria == :objective
+        obj = -Inf
+        violation = false
+    elseif criteria == :param
+        θ_prev = params(model)
+        θ = copy(θ_prev)
+    end
     while !converged && iter < max_iter
         # update model
         update!(model)
 
-        # update objective function
-        obj_prev = obj
-        obj = objective(model)
+        if criteria == :objective
+            # update objective function
+            obj_prev = obj
+            obj = objective(model)
 
-        # non-decrease violation
-        if obj - obj_prev < -1e-4
-            violation = true
-            if verbose
-                println("Objective function value decreased from $iter to $(iter + 1).")
-                println()
+            # non-decrease violation
+            if obj - obj_prev < -1e-4
+                violation = true
+                if verbose
+                    println("Objective function value decreased from $iter to $(iter + 1).")
+                    println()
+                end
+                break
             end
-            break
+
+            # delta
+            δ = 2 * abs(obj - obj_prev) / (abs(obj) + abs(obj_prev))
+        elseif criteria == :param
+            # update parameters
+            θ .= params(model)
+            # delta
+            δ = norm(θ - θ_prev)
+            # store
+            θ_prev .= θ
         end
 
         # convergence
-        δ = 2 * abs(obj - obj_prev) / (abs(obj) + abs(obj_prev))
         converged = δ < tolerance
 
         # update iteration counter
@@ -244,8 +275,9 @@ function fit!(model::AbstractTensorAutoregression;
     if verbose
         println("Optimization summary")
         println("====================")
+        println("Convergence criteria: ", string(criteria))
         println("Convergence: ", converged ? "success" : "failed")
-        println("Non-decrease violation: $violation")
+        criteria == :objective && println("Non-decrease violation: $violation")
         println("Iterations: $iter")
         println("Objective function value: $(objective(model))")
         println("aic: $(aic(model))")
