@@ -213,7 +213,19 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
              for p in 1:lags(model)]
 
         # CP decomposition
-        Astatic = [cp(B[p], Rp)[1] for (p, Rp) in pairs(rank(model))]
+        Astatic = []
+        for (p, Rp) in pairs(rank(model))
+            # trials
+            (opt_trial, opt_obj) = cp(B[p], Rp, tolerance = 1e-6)
+            for _ in 1:100
+                (trial, obj_trial) = cp(B[p], Rp, tolerance = 1e-6)
+                if obj_trial > opt_obj
+                    opt_trial = trial
+                    opt_obj = obj_trial
+                end
+            end
+            push!(Astatic, opt_trial)
+        end
     end
     # factors
     if method == :data
