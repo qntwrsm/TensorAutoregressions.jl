@@ -102,7 +102,11 @@ function cp(X::AbstractArray, R::Integer; tolerance::AbstractFloat = 1e-4,
             Uk .= Xk * Z / V
 
             # normalize
-            loadings(Xhat) .= norm.(eachcol(Uk))
+            if iter == 0
+                loadings(Xhat) .= norm.(eachcol(Uk))
+            else
+                loadings(Xhat) .= norm.(eachcol(Uk), Inf)
+            end
             Uk ./= loadings(Xhat)'
 
             # update inner product
