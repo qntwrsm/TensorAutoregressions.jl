@@ -183,8 +183,8 @@ function isstationary(model::DynamicTensorAutoregression; m::Integer = 100,
 end
 
 """
-    fit!(model; init_method=(coef=:data, dist=:data), tolerance=1e-4, max_iter=1000,
-         criteria=:objective, verbose=false) -> model
+    fit!(model; init_method=(coef=:data, dist=:data), order=true, tolerance=1e-4,
+         max_iter=1000, criteria=:objective, verbose=false) -> model
 
 Fit the tensor autoregressive model described by `model` to the data with `tolerance` and
 maximum number of iterations `max_iter`. `criteria` determines the criteria for convergence
@@ -192,13 +192,17 @@ and can be set to `:objective` for objective function value based or `:param` fo
 value based. If `verbose` is true a summary of the model fitting is printed. `init_method`
 indicates which method is used for initialization of the parameters.
 
+Ordering ambiguity of the Kruskal rank components for each lag are solved by ordering in
+decreasing fashion the rank components based on the unconditional mean of the respective
+loadings processes when `order` is true.
+
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
 for obtaining the least squares and maximum likelihood estimates of the static model, for
 respectively white noise and tensor normal errors.
 """
 function fit!(model::AbstractTensorAutoregression;
-              init_method::NamedTuple = (coef = :data, dist = :data),
+              init_method::NamedTuple = (coef = :data, dist = :data), order::Bool = true,
               tolerance::AbstractFloat = 1e-4, max_iter::Integer = 1000,
               criteria::Symbol = :objective, verbose::Bool = false)
     criteria ∈ (:objective, :param) ||
@@ -269,6 +273,26 @@ function fit!(model::AbstractTensorAutoregression;
 
         # update iteration counter
         iter += 1
+    end
+
+    # fix rank component ordering per lag
+    if order
+        # order rank components
+        for Ap in coef(model)
+            # permutation
+            p = sortperm(intercept(Ap) ./ (1.0 .- dynamics(Ap).diag), rev = true)
+
+            # factors
+            for Upk in factors(Ap)
+                Upk .= Upk[:, p]
+            end
+            # loadings
+            loadings(Ap) .= loadings(Ap)[p, :]
+            # transition dynamics
+            intercept(Ap) .= intercept(Ap)[p]
+            dynamics(Ap).diag .= dynamics(Ap).diag[p]
+            cov(Ap).diag .= cov(Ap).diag[p]
+        end
     end
 
     # optimization summary
