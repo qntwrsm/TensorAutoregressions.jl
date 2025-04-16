@@ -93,6 +93,57 @@ params(A::StaticKruskal) = vcat(vec.(factors(A))..., loadings(A))
 function params(A::DynamicKruskal)
     vcat(vec.(factors(A))..., intercept(A), dynamics(A).diag, cov(A).diag)
 end
+function fixsign!(A::StaticKruskal)
+    T = eltype(loadings(A))
+    n = length(factors(A))
+
+    # fix signs of loadings
+    idx = findall(λ -> λ < 0, loadings(A))
+    loadings(A)[idx] .*= -one(T)
+    factors(A)[1][:, idx] .*= -one(T)
+
+    # fix signs of factors
+    signs = zeros(T, n)
+    for r in 1:rank(A)
+        # find sign of largest factor elements
+        for (k, Uk) in pairs(factors(A))
+            idx = argmax(abs.(Uk[:, r]))
+            signs[k] = sign(Uk[idx, r])
+        end
+
+        # flip signs
+        negatives = findall(s -> s == -1, signs)
+        for i in 1:(length(negatives) - length(negatives) % 2)
+            k = negatives[i]
+            factors(A)[k][:, r] .*= -one(T)
+        end
+    end
+
+    return nothing
+end
+function fixsign!(A::DynamicKruskal)
+    T = eltype(loadings(A))
+    n = length(factors(A))
+
+    # fix signs of factors
+    signs = zeros(T, n)
+    for r in 1:rank(A)
+        # find sign of largest factor elements
+        for (k, Uk) in pairs(factors(A))
+            idx = argmax(abs.(Uk[:, r]))
+            signs[k] = sign(Uk[idx, r])
+        end
+
+        # flip signs
+        negatives = findall(s -> s == -1, signs)
+        for i in 1:(length(negatives) - length(negatives) % 2)
+            k = negatives[i]
+            factors(A)[k][:, r] .*= -one(T)
+        end
+    end
+
+    return nothing
+end
 
 # Tensor error distributions
 """

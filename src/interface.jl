@@ -275,6 +275,9 @@ function fit!(model::AbstractTensorAutoregression;
         iter += 1
     end
 
+    # fix signs of Kruskal tensors
+    fixsign!.(coef(model))
+
     # fix rank component ordering per lag
     if order
         # order rank components

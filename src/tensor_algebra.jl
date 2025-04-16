@@ -126,27 +126,8 @@ function cp(X::AbstractArray, R::Integer; tolerance::AbstractFloat = 1e-4,
         iter += 1
     end
 
-    # fix signs of loadings
-    idx = findall(λ -> λ < 0, loadings(Xhat))
-    loadings(Xhat)[idx] .*= -one(eltype(X))
-    factors(Xhat)[1][:, idx] .*= -one(eltype(X))
-
-    # fix signs of factors
-    signs = similar(X, ndims(X))
-    for r in 1:R
-        # find sign of largest factor elements
-        for (k, Uk) in pairs(factors(Xhat))
-            idx = argmax(abs.(Uk[:, r]))
-            signs[k] = sign(Uk[idx, r])
-        end
-
-        # flip signs
-        negatives = findall(s -> s == -1, signs)
-        for i in 1:(length(negatives) - length(negatives) % 2)
-            k = negatives[i]
-            factors(Xhat)[k][:, r] .*= -one(eltype(X))
-        end
-    end
+    # fix signs of Kruskal tensor
+    fixsign!(Xhat)
 
     return (Xhat, obj)
 end
