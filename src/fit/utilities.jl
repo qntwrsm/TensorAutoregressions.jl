@@ -209,16 +209,20 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
     if method == :data
         # linear regression
         β = z / x
-        B = [tensorize(β[:, ((p - 1) * N + 1):(p * N)], (n + 1):(2n), kruskal_shape)
-             for p in 1:lags(model)]
 
         # CP decomposition
         Astatic = []
         for (p, Rp) in pairs(rank(model))
+            # reduced rank regression
+            βp = β[:, ((p - 1) * N + 1):(p * N)]
+            xp = x[((p - 1) * N + 1):(p * N), :]
+            (U, _, _) = svd(βp * xp)
+            Bp = tensorize(U[:, 1:Rp] * U[:, 1:Rp]' * βp, (n + 1):(2n), kruskal_shape)
+
             # trials
-            (opt_trial, opt_obj) = cp(B[p], Rp, tolerance = 1e-6)
-            for _ in 1:100
-                (trial, obj_trial) = cp(B[p], Rp, tolerance = 1e-6)
+            (opt_trial, opt_obj) = cp(Bp, Rp)
+            for _ in 1:1000
+                (trial, obj_trial) = cp(Bp, Rp)
                 if obj_trial > opt_obj
                     opt_trial = trial
                     opt_obj = obj_trial
@@ -267,16 +271,9 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
         # transition dynamics
         for Ap in coef(model)
             for r in 1:rank(Ap)
-                y = loadings(Ap)[r, 2:end]
-                x = hcat(loadings(Ap)[r, 1:end-1], ones(length(y)))
-
-                # linear regression
-                β = x \ y
-                resid = y - x * β
-
-                dynamics(Ap).diag[r] = β[1]
-                intercept(Ap)[r] = β[2]
-                cov(Ap).diag[r] = var(resid)
+                dynamics(Ap).diag[r] = 0.5
+                intercept(Ap)[r] = 0.0
+                cov(Ap).diag[r] = 1.0 - dynamics(Ap).diag[r]^2
             end
         end
     end

@@ -410,36 +410,34 @@ function update_transition_params!(model::DynamicTensorAutoregression, V::Abstra
         for r in 1:rank(Ap)
             s = (p > 1 ? Rc[p - 1] : 0) + r
 
-            # update dynamics
-            num = denom = zero(dynamics(Ap).diag[r])
-            αr = intercept(Ap)[r]
-            for t in 2:T
-                num += Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1] -
-                       αr * loadings(Ap)[r, t - 1]
-                denom += V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
-            end
-            dynamics(Ap).diag[r] = num / denom
+            # objective function
+            function objective(x)
+                αr, ϕr, σr = x[1], 2.0 / (1.0 + exp(-x[2])) - 1.0, exp(x[3])
+                e = 0.0
+                for t in 2:T
+                    μ2 = V[t][s, s] + loadings(Ap)[r, t]^2
+                    μ2_lag = V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
+                    μ_cross = Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1]
+                    e += μ2 - 2 * αr * loadings(Ap)[r, t] +
+                         2 * ϕr * (αr * loadings(Ap)[r, t - 1] - μ_cross) + αr^2 +
+                         ϕr^2 * μ2_lag
+                end
 
-            # # update intercept
-            intercept(Ap)[r] = zero(intercept(Ap)[r])
-            ϕr = dynamics(Ap).diag[r]
-            for t in 2:T
-                intercept(Ap)[r] += loadings(Ap)[r, t] - ϕr * loadings(Ap)[r, t - 1]
+                return log(σr) + e / (σr * (T - 1))
             end
-            intercept(Ap)[r] /= T - 1
 
-            # update variance
-            cov(Ap).diag[r] = zero(cov(Ap).diag[r])
-            αr = intercept(Ap)[r]
-            for t in 2:T
-                μ2 = V[t][s, s] + loadings(Ap)[r, t]^2
-                μ2_lag = V[t - 1][s, s] + loadings(Ap)[r, t - 1]^2
-                μ_cross = Γ[t - 1][s, s] + loadings(Ap)[r, t] * loadings(Ap)[r, t - 1]
-                cov(Ap).diag[r] += μ2 - 2 * αr * loadings(Ap)[r, t] +
-                                   2 * ϕr * (αr * loadings(Ap)[r, t - 1] - μ_cross) + αr^2 +
-                                   ϕr^2 * μ2_lag
-            end
-            cov(Ap).diag[r] /= T - 1
+            # optimize
+            x0 = [
+                intercept(Ap)[r],
+                log((dynamics(Ap).diag[r] + 1.0) / (2.0 * (1.0 - dynamics(Ap).diag[r]))),
+                log(cov(Ap).diag[r])
+            ]
+            res = optimize(objective, x0, LBFGS(), autodiff = :forward)
+
+            # store parameters
+            intercept(Ap)[r] = Optim.minimizer(res)[1]
+            dynamics(Ap).diag[r] = 2.0 / (1.0 + exp(-Optim.minimizer(res)[2])) - 1.0
+            cov(Ap).diag[r] = exp(Optim.minimizer(res)[3])
         end
     end
 
