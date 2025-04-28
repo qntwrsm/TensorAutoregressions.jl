@@ -193,7 +193,7 @@ value based. If `verbose` is true a summary of the model fitting is printed. `in
 indicates which method is used for initialization of the parameters.
 
 Ordering ambiguity of the Kruskal rank components for each lag are solved by ordering in
-decreasing fashion the rank components based on the unconditional mean of the respective
+decreasing fashion the rank components based on the persistence of the respective
 loadings processes when `order` is true.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
@@ -283,7 +283,6 @@ function fit!(model::AbstractTensorAutoregression;
         # order rank components
         for Ap in coef(model)
             # permutation
-            # p = sortperm(intercept(Ap) ./ (1.0 .- dynamics(Ap).diag), rev = true)
             p = sortperm(dynamics(Ap).diag, rev = true)
 
             # factors
