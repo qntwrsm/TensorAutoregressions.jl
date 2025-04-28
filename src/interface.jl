@@ -283,7 +283,8 @@ function fit!(model::AbstractTensorAutoregression;
         # order rank components
         for Ap in coef(model)
             # permutation
-            p = sortperm(intercept(Ap) ./ (1.0 .- dynamics(Ap).diag), rev = true)
+            # p = sortperm(intercept(Ap) ./ (1.0 .- dynamics(Ap).diag), rev = true)
+            p = sortperm(dynamics(Ap).diag, rev = true)
 
             # factors
             for Upk in factors(Ap)

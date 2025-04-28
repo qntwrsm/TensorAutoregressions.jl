@@ -13,7 +13,7 @@ module TensorAutoregressions
 
 using LinearAlgebra, Statistics, Random, CairoMakie, Dates, Optim
 
-using Distributions: MvNormal
+using Distributions: MvNormal, InverseWishart
 
 using StatsAPI: StatisticalModel
 using StatsAPI: aic, aicc, bic
