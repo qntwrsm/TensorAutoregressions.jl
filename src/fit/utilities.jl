@@ -309,7 +309,7 @@ function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
                                    dims = 2)
         elseif method == :random
             N = prod(d)
-            cov(model).data .= rand(InverseWishart(N + 2, I(N)))
+            cov(model).data .= rand(InverseWishart(N + 2, Matrix(I, N, N)))
         end
     else
         scale = one(eltype(resid))
@@ -317,7 +317,7 @@ function init_dist!(model::AbstractTensorAutoregression, method::Symbol)
             if method == :data
                 cov(model)[k].data .= cov(matricize(resid, k), dims = 2)
             elseif method == :random
-                cov(model)[k].data .= rand(InverseWishart(d[k] + 2, I(d[k])))
+                cov(model)[k].data .= rand(InverseWishart(d[k] + 2, Matrix(I, d[k], d[k])))
             end
             if k < n
                 scale *= norm(cov(model)[k])
