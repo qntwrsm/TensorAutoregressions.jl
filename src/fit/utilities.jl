@@ -217,7 +217,9 @@ function init_kruskal!(model::AbstractTensorAutoregression, method::Symbol)
             βp = β[:, ((p - 1) * N + 1):(p * N)]
             xp = x[((p - 1) * N + 1):(p * N), :]
             (U, _, _) = svd(βp * xp)
-            Bp = tensorize(U[:, 1:Rp] * U[:, 1:Rp]' * βp, (n + 1):(2n), kruskal_shape)
+            # small perturbation
+            Bp = tensorize(U[:, 1:Rp] * U[:, 1:Rp]' * βp, (n + 1):(2n), kruskal_shape) .+
+                 1e-1 * randn(kruskal_shape...)
 
             # trials
             (opt_trial, opt_obj) = cp(Bp, Rp)

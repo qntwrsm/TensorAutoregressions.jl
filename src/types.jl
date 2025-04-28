@@ -93,6 +93,13 @@ params(A::StaticKruskal) = vcat(vec.(factors(A))..., loadings(A))
 function params(A::DynamicKruskal)
     vcat(vec.(factors(A))..., intercept(A), dynamics(A).diag, cov(A).diag)
 end
+function Base.copy(A::StaticKruskal)
+    StaticKruskal(copy(loadings(A)), deepcopy(factors(A)), rank(A))
+end
+function Base.copy(A::DynamicKruskal)
+    DynamicKruskal(copy(loadings(A)), copy(intercept(A)), copy(dynamics(A)), copy(cov(A)),
+                   deepcopy(factors(A)), rank(A))
+end
 function fixsign!(A::StaticKruskal)
     T = eltype(loadings(A))
     n = length(factors(A))
@@ -208,6 +215,8 @@ end
 dof(ε::AbstractTensorErrorDistribution) = (sum(length, cov(ε)) + sum(size.(cov(ε), 1))) / 2
 params(ε::WhiteNoise) = vec(cov(ε))
 params(ε::TensorNormal) = vcat(vec.(cov(ε))...)
+Base.copy(ε::WhiteNoise) = WhiteNoise(copy(cov(ε)))
+Base.copy(ε::TensorNormal) = TensorNormal(deepcopy(cov(ε)))
 
 # Tensor autoreggresive model
 """
@@ -305,6 +314,12 @@ nobs(model::AbstractTensorAutoregression) = last(size(data(model)))
 dof(model::AbstractTensorAutoregression) = sum(dof, coef(model)) + dof(dist(model))
 function params(model::AbstractTensorAutoregression)
     vcat(params.(coef(model))..., params(dist(model)))
+end
+function Base.copy(model::StaticTensorAutoregression)
+    StaticTensorAutoregression(copy(data(model)), copy(dist(model)), copy.(coef(model)))
+end
+function Base.copy(model::DynamicTensorAutoregression)
+    DynamicTensorAutoregression(copy(data(model)), copy(dist(model)), copy.(coef(model)))
 end
 
 # Impulse response functions
