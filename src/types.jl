@@ -151,6 +151,37 @@ function fixsign!(A::DynamicKruskal)
 
     return nothing
 end
+function fixorder!(A::StaticKruskal)
+    # permutation
+    p = sortperm(loadings(A), rev = true)
+
+    # factors
+    for Uk in factors(A)
+        Uk .= Uk[:, p]
+    end
+    # loadings
+    loadings(A) .= loadings(A)[p]
+
+    return nothing
+end
+
+function fixorder!(A::DynamicKruskal)
+    # permutation
+    p = sortperm(dynamics(A).diag, rev = true)
+
+    # factors
+    for Uk in factors(A)
+        Uk .= Uk[:, p]
+    end
+    # loadings
+    loadings(A) .= loadings(A)[p, :]
+    # transition dynamics
+    intercept(A) .= intercept(A)[p]
+    dynamics(A).diag .= dynamics(A).diag[p]
+    cov(A).diag .= cov(A).diag[p]
+
+    return nothing
+end
 
 # Tensor error distributions
 """

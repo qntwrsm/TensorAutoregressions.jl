@@ -192,9 +192,10 @@ and can be set to `:objective` for objective function value based or `:param` fo
 value based. If `verbose` is true a summary of the model fitting is printed. `init_method`
 indicates which method is used for initialization of the parameters.
 
-Ordering ambiguity of the Kruskal rank components for each lag are solved by ordering in
-decreasing fashion the rank components based on the persistence of the respective
-loadings processes when `order` is true.
+When `order` is true, ordering ambiguity of the Kruskal rank components for each lag are
+solved by ordering in decreasing fashion the rank components based on the persistence of the
+respective loadings processes when `model` is dynamic or based on the static loadings if
+`model` is static.
 
 Estimation is done using the Expectation-Maximization algorithm for obtaining the maximum
 likelihood estimates of the dynamic model and the alternating least squares (ALS) algorithm
@@ -282,19 +283,7 @@ function fit!(model::AbstractTensorAutoregression;
     if order
         # order rank components
         for Ap in coef(model)
-            # permutation
-            p = sortperm(dynamics(Ap).diag, rev = true)
-
-            # factors
-            for Upk in factors(Ap)
-                Upk .= Upk[:, p]
-            end
-            # loadings
-            loadings(Ap) .= loadings(Ap)[p, :]
-            # transition dynamics
-            intercept(Ap) .= intercept(Ap)[p]
-            dynamics(Ap).diag .= dynamics(Ap).diag[p]
-            cov(Ap).diag .= cov(Ap).diag[p]
+            fixorder!(Ap)
         end
     end
 
